@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+jobs/
+*.pdf
+*.html.bak
+.DS_Store
+venv/
+.venv/
+node_modules/

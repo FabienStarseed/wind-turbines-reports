@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BDDA — Blade Defect Detection Agent</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- HEADER                                                                      -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-icon">⚙</div>
+      <div class="brand-text">
+        <span class="brand-name">BDDA</span>
+        <span class="brand-sub">Blade Defect Detection Agent</span>
+      </div>
+    </div>
+    <div class="header-meta">
+      <span class="api-status" id="apiStatus">Checking APIs…</span>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- MAIN CONTENT                                                                -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<main class="app-main">
+
+  <!-- LEFT PANEL: Form -->
+  <div class="panel left-panel">
+    <div class="panel-title">New Inspection Report</div>
+
+    <form id="uploadForm" enctype="multipart/form-data">
+
+      <!-- ── Turbine Identity ── -->
+      <div class="form-section">
+        <div class="form-section-label">Turbine Identity</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Turbine ID <span class="req">*</span></label>
+            <input type="text" name="turbine_id" placeholder="JAP19" required>
+          </div>
+          <div class="field">
+            <label>Turbine Model <span class="req">*</span></label>
+            <input type="text" name="turbine_model" placeholder="Vestas V90-2.0 MW" required>
+          </div>
+          <div class="field">
+            <label>Site Name <span class="req">*</span></label>
+            <input type="text" name="site_name" placeholder="Tomamae Wind Farm" required>
+          </div>
+          <div class="field">
+            <label>Country <span class="req">*</span></label>
+            <select name="country" required>
+              <option value="">Select…</option>
+              <option value="Japan">Japan</option>
+              <option value="Philippines">Philippines</option>
+              <option value="Taiwan">Taiwan</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-grid form-grid-3">
+          <div class="field">
+            <label>Hub Height (m)</label>
+            <input type="number" name="hub_height_m" placeholder="80">
+          </div>
+          <div class="field">
+            <label>Rotor Diameter (m)</label>
+            <input type="number" name="rotor_diameter_m" placeholder="90">
+          </div>
+          <div class="field">
+            <label>Blade Length (m)</label>
+            <input type="number" name="blade_length_m" placeholder="44">
+          </div>
+        </div>
+        <div class="form-grid form-grid-2">
+          <div class="field">
+            <label>GPS Latitude</label>
+            <input type="text" name="gps_lat" placeholder="44.3123">
+          </div>
+          <div class="field">
+            <label>GPS Longitude</label>
+            <input type="text" name="gps_lon" placeholder="141.6789">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Inspection Details ── -->
+      <div class="form-section">
+        <div class="form-section-label">Inspection Details</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Inspector Name <span class="req">*</span></label>
+            <input type="text" name="inspector_name" placeholder="Your name" required>
+          </div>
+          <div class="field">
+            <label>Inspection Date <span class="req">*</span></label>
+            <input type="date" name="inspection_date" required>
+          </div>
+          <div class="field">
+            <label>Drone Model</label>
+            <input type="text" name="drone_model" placeholder="DJI Matrice 300 RTK" value="DJI Matrice 300 RTK">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Environmental Conditions ── -->
+      <div class="form-section">
+        <div class="form-section-label">Environmental Conditions</div>
+        <div class="form-grid form-grid-4">
+          <div class="field">
+            <label>Weather</label>
+            <input type="text" name="weather" placeholder="Clear, sunny">
+          </div>
+          <div class="field">
+            <label>Wind Speed (m/s)</label>
+            <input type="number" step="0.1" name="wind_speed_ms" placeholder="4.2">
+          </div>
+          <div class="field">
+            <label>Temperature (°C)</label>
+            <input type="number" name="temperature_c" placeholder="22">
+          </div>
+          <div class="field">
+            <label>Visibility (km)</label>
+            <input type="number" name="visibility_km" placeholder="20">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Notes ── -->
+      <div class="form-section">
+        <div class="form-section-label">Inspection Notes</div>
+        <div class="field">
+          <textarea name="notes" rows="3" placeholder="Any limitations, blade access issues, weather notes…"></textarea>
+        </div>
+      </div>
+
+      <!-- ── Image Upload ── -->
+      <div class="form-section">
+        <div class="form-section-label">Upload Images <span class="req">*</span></div>
+        <div class="drop-zone" id="dropZone">
+          <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required>
+          <div class="drop-icon">📁</div>
+          <div class="drop-text">Drag &amp; drop your DJI mission folder ZIP</div>
+          <div class="drop-sub">or click to select files — ZIP preferred for full folder structure</div>
+          <div class="drop-hint">Supported: ZIP (DJI mission folder) · JPG/PNG (individual images)</div>
+        </div>
+        <div class="file-preview" id="filePreview" style="display:none;"></div>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">
+        <span class="btn-icon">▶</span>
+        Generate Inspection Report
+      </button>
+
+    </form>
+  </div>
+
+  <!-- RIGHT PANEL: Status + History -->
+  <div class="panel right-panel">
+
+    <!-- Active Job -->
+    <div class="panel-section" id="jobPanel" style="display:none;">
+      <div class="panel-title">Analysis Progress</div>
+      <div class="job-card" id="jobCard">
+        <div class="job-header">
+          <span class="job-turbine" id="jobTurbineId">—</span>
+          <span class="job-id" id="jobId">—</span>
+        </div>
+        <div class="progress-stages" id="progressStages">
+          <div class="stage-item" data-stage="ingesting">
+            <div class="stage-dot"></div>
+            <div class="stage-label">Ingest Images</div>
+          </div>
+          <div class="stage-item" data-stage="triaging">
+            <div class="stage-dot"></div>
+            <div class="stage-label">Triage (Kimi)</div>
+          </div>
+          <div class="stage-item" data-stage="classifying">
+            <div class="stage-dot"></div>
+            <div class="stage-label">Classify (Gemini)</div>
+          </div>
+          <div class="stage-item" data-stage="analyzing">
+            <div class="stage-dot"></div>
+            <div class="stage-label">Analyze (Claude)</div>
+          </div>
+          <div class="stage-item" data-stage="generating_report">
+            <div class="stage-dot"></div>
+            <div class="stage-label">Build PDF</div>
+          </div>
+          <div class="stage-item" data-stage="complete">
+            <div class="stage-dot"></div>
+            <div class="stage-label">Complete</div>
+          </div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" id="progressBar" style="width:0%"></div>
+        </div>
+        <div class="job-message" id="jobMessage">Queued…</div>
+        <div class="job-stats" id="jobStats"></div>
+
+        <a class="download-btn" id="downloadBtn" style="display:none;" href="#">
+          ⬇ Download Report PDF
+        </a>
+        <div class="error-block" id="errorBlock" style="display:none;"></div>
+      </div>
+    </div>
+
+    <!-- Pipeline info -->
+    <div class="panel-section">
+      <div class="panel-title">AI Pipeline</div>
+      <div class="pipeline-info">
+        <div class="pipeline-step">
+          <div class="pipeline-step-badge step-1">1</div>
+          <div class="pipeline-step-body">
+            <div class="pipeline-step-name">Triage</div>
+            <div class="pipeline-step-model">Kimi K2.5</div>
+            <div class="pipeline-step-desc">Binary YES/NO defect screening — all images (~$0.50/turbine)</div>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-badge step-2">2</div>
+          <div class="pipeline-step-body">
+            <div class="pipeline-step-name">Classification</div>
+            <div class="pipeline-step-model">Gemini 2.5 Pro</div>
+            <div class="pipeline-step-desc">Defect type + Vestas Cat 1–5 severity — flagged images (~$3/turbine)</div>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-badge step-3">3</div>
+          <div class="pipeline-step-body">
+            <div class="pipeline-step-name">Deep Analysis</div>
+            <div class="pipeline-step-model">Claude Opus 4.6</div>
+            <div class="pipeline-step-desc">Root cause + Vestas SMP — Cat 4–5 only (~$8/turbine)</div>
+          </div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-step-badge step-4">4</div>
+          <div class="pipeline-step-body">
+            <div class="pipeline-step-name">PDF Report</div>
+            <div class="pipeline-step-model">WeasyPrint</div>
+            <div class="pipeline-step-desc">Professional Vestas-format PDF with findings + action matrix</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent jobs -->
+    <div class="panel-section">
+      <div class="panel-title">Recent Reports</div>
+      <div id="jobHistory" class="job-history">
+        <div class="history-empty">No reports generated yet.</div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
