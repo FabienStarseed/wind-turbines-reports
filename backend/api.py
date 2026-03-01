@@ -101,8 +101,17 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
 
         # ── Stage 1: Ingest ──
         set_stage(job_id, "ingesting", "Parsing DJI folder structure...")
+
+        # If the ZIP contained a single top-level wrapper folder (e.g. JAP19_test/),
+        # unwrap it so ingest sees the DJI mission folders directly.
+        subdirs = [d for d in images_dir.iterdir() if d.is_dir()]
+        if len(subdirs) == 1 and not any(images_dir.glob("DJI_*")):
+            scan_dir = subdirs[0]
+        else:
+            scan_dir = images_dir
+
         result = ingest_turbine_folder(
-            images_dir,
+            scan_dir,
             turbine_id=turbine_meta["turbine_id"],
         )
         images = get_all_images_flat(result)
