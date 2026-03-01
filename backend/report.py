@@ -299,29 +299,36 @@ def render_html(report_data: Dict, templates_dir: Path) -> str:
 # ─── PDF GENERATION ───────────────────────────────────────────────────────────
 
 def generate_pdf(html_content: str, output_path: Path, css_path: Optional[Path] = None) -> Path:
-    """Convert HTML to PDF using WeasyPrint."""
-    try:
-        from weasyprint import HTML as WeasyHTML, CSS as WeasyCSS
-    except ImportError:
-        raise RuntimeError("Install weasyprint: pip install weasyprint")
-    except OSError as e:
-        raise RuntimeError(
-            f"WeasyPrint requires system GTK/Pango libraries. "
-            f"On macOS: brew install pango. Error: {e}"
-        )
-
+    """Convert HTML to PDF — tries WeasyPrint first, falls back to xhtml2pdf."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    stylesheets = []
-    if css_path and Path(css_path).exists():
-        stylesheets.append(WeasyCSS(filename=str(css_path)))
+    # Try WeasyPrint (best quality, requires GTK/Pango system libs)
+    try:
+        from weasyprint import HTML as WeasyHTML, CSS as WeasyCSS
+        stylesheets = []
+        if css_path and Path(css_path).exists():
+            stylesheets.append(WeasyCSS(filename=str(css_path)))
+        WeasyHTML(string=html_content).write_pdf(
+            str(output_path),
+            stylesheets=stylesheets,
+        )
+        return output_path
+    except Exception:
+        pass  # Fall through to xhtml2pdf
 
-    WeasyHTML(string=html_content).write_pdf(
-        str(output_path),
-        stylesheets=stylesheets,
-    )
-    return output_path
+    # Fallback: xhtml2pdf (pure Python, no system deps)
+    try:
+        from xhtml2pdf import pisa
+        with open(output_path, "wb") as f:
+            result = pisa.CreatePDF(html_content, dest=f)
+        if result.err:
+            raise RuntimeError(f"xhtml2pdf error: {result.err}")
+        return output_path
+    except ImportError:
+        raise RuntimeError(
+            "No PDF library available. Install weasyprint (needs GTK) or xhtml2pdf: pip install xhtml2pdf"
+        )
 
 
 # ─── FULL PIPELINE ────────────────────────────────────────────────────────────

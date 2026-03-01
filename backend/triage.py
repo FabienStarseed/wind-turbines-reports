@@ -9,6 +9,7 @@ Kimi K2.5 is chosen for triage: cheapest vision model for binary screening.
 
 import os
 import json
+import re
 import time
 import base64
 import asyncio
@@ -118,29 +119,35 @@ def call_kimi_triage(
             "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
         })
 
+    raw = ""
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": content}],
-                max_tokens=150,
+                max_tokens=300,
                 temperature=0.1,
             )
             raw = response.choices[0].message.content.strip()
 
-            # Parse JSON response
-            # Handle cases where model adds markdown fences
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            raw = raw.strip()
+            # Strip markdown code fences robustly
+            cleaned = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+            cleaned = re.sub(r"\s*```\s*$", "", cleaned, flags=re.MULTILINE)
+            cleaned = cleaned.strip()
 
-            return json.loads(raw)
+            parsed = json.loads(cleaned)
+
+            # Guard: Kimi must return a JSON object, not a scalar string
+            if not isinstance(parsed, dict):
+                raise json.JSONDecodeError(
+                    f"Expected JSON object, got {type(parsed).__name__}", cleaned, 0
+                )
+
+            return parsed
 
         except json.JSONDecodeError as e:
             if attempt == max_retries - 1:
-                return {"error": f"JSON parse failed: {e}", "raw": raw}
+                return {"error": f"JSON parse failed: {e}", "raw": raw[:200]}
             time.sleep(1)
         except Exception as e:
             if attempt == max_retries - 1:
