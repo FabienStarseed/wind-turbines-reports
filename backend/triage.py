@@ -97,7 +97,7 @@ def call_kimi_triage(
     Call Kimi K2.5 API with image tiles for triage.
     Returns parsed JSON response or error dict.
 
-    Kimi API is OpenAI-compatible, base URL: https://api.moonshot.cn/v1
+    Kimi API is OpenAI-compatible, base URL: https://api.moonshot.ai/v1
     """
     try:
         from openai import OpenAI
@@ -106,7 +106,7 @@ def call_kimi_triage(
 
     client = OpenAI(
         api_key=api_key,
-        base_url="https://api.moonshot.cn/v1",
+        base_url="https://api.moonshot.ai/v1",
     )
 
     prompt = TRIAGE_PROMPT.format(blade=blade, zone=zone, position=position)

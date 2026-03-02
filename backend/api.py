@@ -405,7 +405,7 @@ async def debug_kimi():
 
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=kimi_key, base_url="https://api.moonshot.cn/v1")
+        client = OpenAI(api_key=kimi_key, base_url="https://api.moonshot.ai/v1")
 
         # Test 1: vision-preview model with image
         response = client.chat.completions.create(
