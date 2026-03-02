@@ -90,7 +90,7 @@ def call_kimi_triage(
     zone: str,
     position: str,
     api_key: str,
-    model: str = "moonshot-v1-8k",
+    model: str = "moonshot-v1-8k-vision-preview",
     max_retries: int = 3,
 ) -> Dict:
     """
