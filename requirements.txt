@@ -17,6 +17,7 @@ opencv-python-headless>=4.9.0
 
 # ─── Template / PDF ───────────────────────────────────────────────────────────
 jinja2>=3.1.0
+python-bidi==0.4.2       # Pin pre-built wheel version (0.5+ requires Rust build)
 xhtml2pdf>=0.2.11        # Pure Python PDF renderer (no system deps needed)
 
 # ─── Utilities ────────────────────────────────────────────────────────────────
