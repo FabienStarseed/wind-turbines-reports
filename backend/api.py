@@ -383,7 +383,60 @@ async def get_status(job_id: str):
         "created_at": state.get("created_at"),
         "completed_at": state.get("completed_at"),
         "error": state.get("stage_message") if stage == "error" else None,
+        "error_traceback": state.get("error_traceback") if stage == "error" else None,
     }
+
+
+@app.get("/api/debug/kimi")
+async def debug_kimi():
+    """Test Kimi API directly — returns raw response for diagnosis."""
+    import base64, io, re
+    from PIL import Image as PILImage
+
+    kimi_key = os.environ.get("KIMI_API_KEY", "")
+    if not kimi_key:
+        return {"error": "KIMI_API_KEY not set"}
+
+    # Create a tiny 64x64 solid grey test image
+    img = PILImage.new("RGB", (64, 64), color=(128, 128, 128))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=60)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=kimi_key, base_url="https://api.moonshot.cn/v1")
+
+        # Test 1: vision-preview model with image
+        response = client.chat.completions.create(
+            model="moonshot-v1-8k-vision-preview",
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": 'Reply ONLY with valid JSON: {"has_defect": false, "confidence": 0.1, "defect_hint": null}'},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+            ]}],
+            max_tokens=300,
+            temperature=0.1,
+        )
+        raw = response.choices[0].message.content
+        cleaned = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+        cleaned = re.sub(r"\s*```\s*$", "", cleaned, flags=re.MULTILINE).strip()
+        try:
+            parsed = json.loads(cleaned)
+            parse_ok = True
+        except Exception as pe:
+            parsed = None
+            parse_ok = str(pe)
+
+        return {
+            "model": "moonshot-v1-8k-vision-preview",
+            "raw_response": repr(raw),
+            "cleaned": repr(cleaned),
+            "parse_ok": parse_ok,
+            "parsed": parsed,
+        }
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 
 @app.get("/api/download/{job_id}")
