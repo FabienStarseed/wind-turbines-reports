@@ -17,8 +17,7 @@ opencv-python-headless>=4.9.0
 
 # ─── Template / PDF ───────────────────────────────────────────────────────────
 jinja2>=3.1.0
-weasyprint>=61.0         # Requires pango/cairo system libs (available on Railway)
-xhtml2pdf>=0.2.11        # Pure Python fallback PDF renderer (no system deps)
+xhtml2pdf>=0.2.11        # Pure Python PDF renderer (no system deps needed)
 
 # ─── Utilities ────────────────────────────────────────────────────────────────
 python-dateutil>=2.9.0
