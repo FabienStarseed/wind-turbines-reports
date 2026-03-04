@@ -1,14 +1,15 @@
 """
-classify.py — Stage 2: Defect classification using Gemini 2.5 Pro
+classify.py — Stage 2: Defect classification using Claude Opus 4.6
 Takes flagged images from triage, returns structured defect JSON per image.
 
-Gemini 2.5 Pro chosen for classification:
-- Native high-resolution image handling (no tiling needed for classification)
-- Best multi-image batch performance
-- ~$3/turbine for 80 flagged images
+Claude Opus 4.6 chosen for classification:
+- Anthropic SDK unified with triage and analysis stages
+- IEC 61400 / DNVGL-ST-0376 dual scoring (IEC Cat 0-4 + BDDA 0-10)
+- Image resized to max 1568px before encoding (Anthropic vision limit)
 """
 
 import os
+import io
 import json
 import time
 import base64
@@ -16,61 +17,78 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
+import anthropic
 from taxonomy import build_taxonomy_prompt_block, DEFECTS, get_urgency_for_category
 
 # ─── CLASSIFICATION PROMPT ────────────────────────────────────────────────────
 
-CLASSIFY_SYSTEM_PROMPT = """You are a senior wind turbine blade inspector with 20 years of field experience.
-You specialize in visual defect identification using drone imagery for Vestas, Siemens Gamesa, and Enercon turbines.
-You have deep knowledge of composite blade failure modes and IEC/DNVGL inspection standards.
+CLASSIFY_SYSTEM_PROMPT = """You are a senior wind turbine blade inspector with 20 years of field experience in IEC 61400-1 and DNVGL-ST-0376 standards.
+You specialize in DJI P1 45MP drone imagery analysis for Vestas, Siemens Gamesa, and Enercon turbines.
+You have deep knowledge of composite blade failure modes and international inspection standards.
+Your assessments use the IEC 61400 / international severity scale (Category 0 to 4) and a custom BDDA severity score (0 to 10).
 Your assessments are used for Vestas maintenance planning — accuracy is critical."""
 
 CLASSIFY_USER_PROMPT = """Analyze this drone inspection image from a wind turbine and identify all defects present.
 
 TURBINE CONTEXT:
-- Turbine ID: {turbine_id}
-- Turbine Model: {turbine_model}
+- Turbine ID: {turbine_id} | Model: {turbine_model}
 - Blade: {blade} | Zone: {zone} | Position: {position}
 - Image: {image_name}
-
-TRIAGE HINT (from initial screening): {defect_hint}
+- Location: {location_type}
+- Triage hint: {defect_hint}
 
 {taxonomy_block}
 
 INSTRUCTIONS:
-For each defect you identify in this image, return one entry with these exact fields:
+For each defect identified, return one entry with:
 - defect_id: integer from taxonomy (1-56), or 0 if unlisted
 - defect_name: exact name from taxonomy
-- category: Vestas severity 1-5
+- iec_category: IEC 61400 category 0-4 (0=No action, 1=Log, 2=Monitor/next service, 3=Planned repair <3 months, 4=Urgent/immediate action)
+- bdda_score: BDDA severity 0-10 (derived from iec_category: Cat0=0, Cat1=1, Cat2=3, Cat3=6, Cat4=9)
 - urgency: LOG / MONITOR / PLANNED / URGENT / IMMEDIATE
-- zone: LE / TE / PS / SS (where defect is located)
-- position: Root / Transition / Mid / Tip (span location)
+- zone: LE / TE / PS / SS
+- position: Root / Transition / Mid / Tip
 - size_estimate: "small (<5cm)" / "medium (5-30cm)" / "large (>30cm)" / "extensive (full zone)"
-- confidence: 0.0-1.0 (your confidence in this classification)
-- visual_description: 1-2 sentences describing exactly what you see in the image
-- ndt_recommended: true/false (if NDT follow-up is needed to confirm)
+- confidence: 0.0-1.0
+- visual_description: 1-2 sentences describing exactly what you see
+- ndt_recommended: true/false
 
-Return ONLY valid JSON, no other text:
+Return ONLY valid JSON:
 {
-  "defects": [
-    {
-      "defect_id": <int>,
-      "defect_name": "<string>",
-      "category": <1-5>,
-      "urgency": "<string>",
-      "zone": "<string>",
-      "position": "<string>",
-      "size_estimate": "<string>",
-      "confidence": <float>,
-      "visual_description": "<string>",
-      "ndt_recommended": <bool>
-    }
-  ],
+  "defects": [...],
   "image_quality": "good" / "acceptable" / "poor",
-  "image_notes": "<any notes about image quality, lighting, angle>"
+  "image_notes": "<notes>"
 }
 
-If no defects are found, return: {"defects": [], "image_quality": "good", "image_notes": ""}"""
+If no defects found: {"defects": [], "image_quality": "good", "image_notes": ""}"""
+
+
+# ─── SCORING UTILITIES ────────────────────────────────────────────────────────
+
+# Claude Opus 4.6 pricing (per million tokens)
+_INPUT_COST_PER_TOKEN = 15.0 / 1_000_000   # $15/M input tokens
+_OUTPUT_COST_PER_TOKEN = 75.0 / 1_000_000  # $75/M output tokens
+
+# IEC Cat 0-4 → BDDA 0-10 midpoint mapping
+_IEC_TO_BDDA = {0: 0, 1: 1, 2: 3, 3: 6, 4: 9}
+
+
+def iec_to_bdda(iec_cat: int) -> int:
+    """Return midpoint BDDA score (0-10) for an IEC category (0-4)."""
+    return _IEC_TO_BDDA.get(iec_cat, 0)
+
+
+def load_and_resize_image(image_path: Path, max_edge: int = 1568) -> str:
+    """Load image, resize if longest edge > max_edge, return raw base64 string (no data URI prefix)."""
+    from PIL import Image
+    with Image.open(image_path) as img:
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        if max(img.size) > max_edge:
+            img.thumbnail((max_edge, max_edge), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
 # ─── DATA STRUCTURES ──────────────────────────────────────────────────────────
@@ -79,7 +97,8 @@ If no defects are found, return: {"defects": [], "image_quality": "good", "image
 class DefectFinding:
     defect_id: int
     defect_name: str
-    category: int
+    iec_category: int
+    bdda_score: int
     urgency: str
     zone: str
     position: str
@@ -106,16 +125,17 @@ class ClassifyResult:
     image_quality: str = "good"
     image_notes: str = ""
     error: Optional[str] = None
+    cost_usd: float = 0.0
 
     @property
     def max_category(self) -> int:
         if not self.defects:
             return 0
-        return max(d.category for d in self.defects)
+        return max(d.iec_category for d in self.defects)
 
     @property
     def has_critical(self) -> bool:
-        return any(d.category >= 4 for d in self.defects)
+        return any(d.iec_category >= 3 for d in self.defects)
 
 
 # ─── GEMINI API CLIENT ────────────────────────────────────────────────────────
