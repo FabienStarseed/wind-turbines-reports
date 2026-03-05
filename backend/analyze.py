@@ -138,7 +138,7 @@ def call_claude_analyze(
         zone=defect.get("zone", "Unknown"),
         position=defect.get("position", "Unknown"),
         defect_name=defect["defect_name"],
-        category=defect["category"],
+        category=defect.get("iec_category", defect.get("category", 0)),
         urgency=defect.get("urgency", "URGENT"),
         size_estimate=defect.get("size_estimate", "Unknown"),
         confidence=float(defect.get("confidence", 0.0)),
@@ -236,7 +236,7 @@ def analyze_defect(
     if "error" in raw:
         return DeepAnalysis(
             defect_name=defect["defect_name"],
-            category=defect["category"],
+            category=defect.get("iec_category", defect.get("category", 0)),
             blade=defect.get("blade", ""),
             zone=defect.get("zone", ""),
             position=defect.get("position", ""),
@@ -263,7 +263,7 @@ def analyze_defect(
 
     return DeepAnalysis(
         defect_name=defect["defect_name"],
-        category=defect["category"],
+        category=defect.get("iec_category", defect.get("category", 0)),
         blade=defect.get("blade", ""),
         zone=defect.get("zone", ""),
         position=defect.get("position", ""),
@@ -308,7 +308,7 @@ def analyze_critical_defects(
 
     for i, defect in enumerate(critical_findings):
         if verbose:
-            print(f"  [{i+1}/{total}] Cat{defect['category']} {defect['defect_name']} | B{defect.get('blade','')} {defect.get('zone','')} {defect.get('position','')}")
+            print(f"  [{i+1}/{total}] Cat{defect.get('iec_category', defect.get('category', 0))} {defect['defect_name']} | B{defect.get('blade','')} {defect.get('zone','')} {defect.get('position','')}")
 
         analysis = analyze_defect(defect, turbine_model, api_key)
         results.append(analysis)
