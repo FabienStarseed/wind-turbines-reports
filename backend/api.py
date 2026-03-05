@@ -47,6 +47,48 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 TEMPLATES_DIR = BASE_DIR / "templates"
 JOBS_DIR.mkdir(exist_ok=True)
 
+# ─── COST ESTIMATION ──────────────────────────────────────────────────────────
+
+INPUT_PRICE  = 5.0 / 1_000_000   # $ per token, claude-opus-4-6
+OUTPUT_PRICE = 25.0 / 1_000_000  # $ per token, claude-opus-4-6
+
+
+def estimate_cost(image_count: int) -> dict:
+    """Conservative pre-run cost estimate before pipeline starts."""
+    TOKENS_PER_TILE     = 1600
+    TILES_PER_IMAGE     = 4
+    TRIAGE_OUT_EST      = 80
+    CLASSIFY_IN_EST     = 1600
+    CLASSIFY_OUT_EST    = 500
+    ANALYZE_IN_EST      = 1600
+    ANALYZE_OUT_EST     = 600
+    flagged_est         = int(image_count * 0.30)
+    critical_est        = int(flagged_est * 0.20)
+
+    triage_in   = image_count * TILES_PER_IMAGE * TOKENS_PER_TILE
+    triage_out  = image_count * TRIAGE_OUT_EST
+    classify_in = flagged_est * CLASSIFY_IN_EST
+    classify_out = flagged_est * CLASSIFY_OUT_EST
+    analyze_in  = critical_est * ANALYZE_IN_EST
+    analyze_out = critical_est * ANALYZE_OUT_EST
+
+    total_in  = triage_in + classify_in + analyze_in
+    total_out = triage_out + classify_out + analyze_out
+    total_usd = total_in * INPUT_PRICE + total_out * OUTPUT_PRICE
+
+    return {
+        "image_count": image_count,
+        "flagged_estimate": flagged_est,
+        "critical_estimate": critical_est,
+        "estimated_cost_usd": round(total_usd, 2),
+        "breakdown": {
+            "triage_usd": round(triage_in * INPUT_PRICE + triage_out * OUTPUT_PRICE, 2),
+            "classify_usd": round(classify_in * INPUT_PRICE + classify_out * OUTPUT_PRICE, 2),
+            "analyze_usd": round(analyze_in * INPUT_PRICE + analyze_out * OUTPUT_PRICE, 2),
+        },
+    }
+
+
 # ─── JOB STATE ────────────────────────────────────────────────────────────────
 
 # In-memory job registry (survives within a process; jobs re-read from disk on restart)
@@ -116,108 +158,92 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         )
         images = get_all_images_flat(result)
         update_job(job_id, total_images=len(images))
+
+        # 500-image cap
+        IMAGE_CAP = 500
+        if len(images) > IMAGE_CAP:
+            skipped_count = len(images) - IMAGE_CAP
+            images = images[:IMAGE_CAP]
+            update_job(job_id, image_cap_warning=f"Capped at {IMAGE_CAP} images. {skipped_count} images skipped.")
+
         set_stage(job_id, "triaging", f"Screening {len(images)} images for defects...")
 
         # ── Stage 2: Triage ──
-        kimi_key = os.environ.get("KIMI_API_KEY", "")
-        if not kimi_key:
-            # Skip triage if no API key — treat all images as flagged
-            flagged = [{"path": str(img["path"]), "turbine_id": img["turbine_id"],
-                        "blade": img["blade"], "zone": img["zone"], "position": img["position"],
-                        "mission_folder": img["mission_folder"], "has_defect": True,
-                        "defect_hint": "Triage skipped (no KIMI_API_KEY)"} for img in images[:50]]
-            update_job(job_id, flagged_images=len(flagged))
-        else:
-            from triage import triage_batch
-            summary = triage_batch(images, kimi_key, verbose=False)
-            triage_path = job_dir / "triage.json"
-            save_triage_results(summary, triage_path)
-            flagged = [
-                {**vars(r), "path": str(r.image_path)}
-                for r in summary.results if r.has_defect
-            ]
-            update_job(job_id, flagged_images=len(flagged))
+        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        cost_limit_usd = float(os.environ.get("COST_LIMIT_USD", "999999"))
+        running_cost = 0.0
+
+        if not anthropic_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not set — pipeline requires Anthropic API key")
+
+        summary = triage_batch(
+            images,
+            anthropic_key,
+            n_tiles=4,
+            location_type=turbine_meta.get("location_type", "onshore"),
+            turbine_model=turbine_meta.get("turbine_model", ""),
+            inspection_date=turbine_meta.get("inspection_date", ""),
+            job_dir=job_dir,
+            verbose=False,
+        )
+        triage_path = job_dir / "triage.json"
+        save_triage_results(summary, triage_path)
+        triage_cost = summary.triage_cost_usd
+        running_cost += triage_cost
+        update_job(job_id, flagged_images=summary.flagged_images, triage_cost_usd=triage_cost)
+
+        # Cost limit check after triage
+        if running_cost > cost_limit_usd:
+            update_job(job_id, stage="error", stage_message=f"Cost limit exceeded after triage: ${running_cost:.2f} > ${cost_limit_usd:.2f}")
+            return
+
+        flagged = [
+            {**vars(r), "path": str(r.image_path), "location_type": turbine_meta.get("location_type", "onshore")}
+            for r in summary.results if r.has_defect
+        ]
 
         set_stage(job_id, "classifying", f"Classifying {len(flagged)} flagged images...")
 
         # ── Stage 3: Classify ──
-        google_key = os.environ.get("GOOGLE_API_KEY", "")
         classify_path = job_dir / "classify.json"
 
-        if not google_key:
-            # Generate minimal classify JSON from flagged images
-            dummy_classify = [
-                {
-                    "image_path": img["path"],
-                    "turbine_id": turbine_meta["turbine_id"],
-                    "blade": img.get("blade", "A"),
-                    "zone": img.get("zone", "LE"),
-                    "position": img.get("position", "Mid"),
-                    "mission_folder": img.get("mission_folder", ""),
-                    "image_quality": "good",
-                    "image_notes": "Classification skipped (no GOOGLE_API_KEY)",
-                    "error": None,
-                    "max_category": 0,
-                    "defects": [],
-                }
-                for img in flagged[:20]
-            ]
-            with open(classify_path, "w") as f:
-                json.dump(dummy_classify, f)
-            critical_findings = []
-        else:
-            from classify import classify_batch, save_classify_results, load_critical_findings
-            classify_results = classify_batch(
-                flagged[:80],  # cap at 80 images
-                turbine_meta.get("turbine_model", "Unknown"),
-                google_key,
-                verbose=False,
-            )
-            save_classify_results(classify_results, classify_path)
-            critical_findings = load_critical_findings(classify_path)
-            update_job(job_id, critical_findings=len(critical_findings))
+        classify_results = classify_batch(
+            flagged[:80],  # cap at 80 images
+            turbine_meta.get("turbine_model", "Unknown"),
+            anthropic_key,
+            verbose=False,
+        )
+        save_classify_results(classify_results, classify_path)
+        classify_cost = sum(r.cost_usd for r in classify_results)
+        running_cost += classify_cost
+        update_job(job_id, critical_findings=sum(1 for r in classify_results if r.has_critical), classify_cost_usd=classify_cost)
+        critical_findings = load_critical_findings(classify_path)
+
+        # Cost limit check after classify
+        if running_cost > cost_limit_usd:
+            update_job(job_id, stage="error", stage_message=f"Cost limit exceeded after classify: ${running_cost:.2f} > ${cost_limit_usd:.2f}")
+            return
 
         set_stage(job_id, "analyzing", f"Deep analysis of {len(critical_findings)} critical findings...")
 
         # ── Stage 4: Analyze ──
         analyze_path = job_dir / "analyze.json"
-        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
-        if not anthropic_key or not critical_findings:
-            analyze_data = []
-            with open(analyze_path, "w") as f:
-                json.dump(analyze_data, f)
-        else:
-            from analyze import analyze_critical_defects, save_analysis_results
-            analyses = analyze_critical_defects(
+        if critical_findings:
+            analyses, analyze_cost = analyze_critical_defects(
                 critical_findings,
                 turbine_meta.get("turbine_model", "Unknown"),
                 anthropic_key,
                 verbose=False,
             )
             save_analysis_results(analyses, analyze_path)
-            analyze_data = [
-                {
-                    "defect_name": a.defect_name,
-                    "category": a.category,
-                    "turbine_id": a.turbine_id,
-                    "blade": a.blade,
-                    "zone": a.zone,
-                    "position": a.position,
-                    "root_cause": a.root_cause,
-                    "failure_risk": a.failure_risk,
-                    "vestas_standard": a.vestas_standard,
-                    "recommended_action": a.recommended_action,
-                    "repair_timeframe": a.repair_timeframe,
-                    "estimated_cost_usd": a.estimated_cost_usd,
-                    "engineer_review_required": a.engineer_review_required,
-                    "engineer_review_reason": a.engineer_review_reason,
-                    "analysis_confidence": a.analysis_confidence,
-                    "additional_notes": a.additional_notes,
-                    "error": a.error,
-                }
-                for a in analyses
-            ]
+            running_cost += analyze_cost
+            update_job(job_id, analyze_cost_usd=analyze_cost)
+        else:
+            analyses = []
+            analyze_cost = 0.0
+            with open(analyze_path, "w") as f:
+                json.dump([], f)
 
         set_stage(job_id, "generating_report", "Building PDF report...")
 
@@ -243,6 +269,7 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
             stage_message="Report ready",
             pdf_path=str(pdf_path),
             completed_at=datetime.now().isoformat(),
+            total_cost_usd=round(running_cost, 4),
         )
 
     except Exception as e:
@@ -283,6 +310,14 @@ def extract_upload(upload_file: UploadFile, dest_dir: Path) -> int:
 
 # ─── ENDPOINTS ────────────────────────────────────────────────────────────────
 
+@app.post("/api/estimate")
+async def cost_estimate(image_count: int = Form(...)):
+    """Return estimated pipeline cost for a given image count before committing to run."""
+    if image_count > 500:
+        image_count = 500  # cap matches pipeline cap
+    return estimate_cost(image_count)
+
+
 @app.post("/api/upload")
 async def upload_inspection(
     background_tasks: BackgroundTasks,
@@ -303,6 +338,7 @@ async def upload_inspection(
     gps_lon: Optional[str] = Form(None),
     drone_model: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
+    location_type: Optional[str] = Form(None),
     images: UploadFile = File(...),
 ):
     job_id = str(uuid.uuid4())[:8]
@@ -336,6 +372,7 @@ async def upload_inspection(
         "camera": "DJI Zenmuse P1 45MP",
         "notes": notes or "",
         "company_name": os.environ.get("COMPANY_NAME", "DroneWind Asia"),
+        "location_type": location_type if location_type in ("onshore", "offshore") else "onshore",
     }
 
     save_job(job_id, {
@@ -347,10 +384,18 @@ async def upload_inspection(
         "created_at": datetime.now().isoformat(),
     })
 
+    # Compute cost estimate before starting
+    cost_est = estimate_cost(min(image_count, 500))
+
     # Run pipeline in background
     background_tasks.add_task(run_pipeline, job_id, job_dir, turbine_meta)
 
-    return {"job_id": job_id, "image_count": image_count, "message": "Pipeline started"}
+    return {
+        "job_id": job_id,
+        "image_count": image_count,
+        "message": "Pipeline started",
+        "cost_estimate": cost_est,
+    }
 
 
 @app.get("/api/status/{job_id}")
@@ -369,6 +414,7 @@ async def get_status(job_id: str):
         "generating_report": 85,
         "complete": 100,
         "error": -1,
+        "cost_limit_exceeded": -1,
     }
 
     stage = state.get("stage", "queued")
@@ -384,53 +430,58 @@ async def get_status(job_id: str):
         "completed_at": state.get("completed_at"),
         "error": state.get("stage_message") if stage == "error" else None,
         "error_traceback": state.get("error_traceback") if stage == "error" else None,
+        "triage_cost_usd": state.get("triage_cost_usd"),
+        "classify_cost_usd": state.get("classify_cost_usd"),
+        "analyze_cost_usd": state.get("analyze_cost_usd"),
+        "total_cost_usd": state.get("total_cost_usd"),
+        "image_cap_warning": state.get("image_cap_warning"),
     }
 
 
-@app.get("/api/debug/kimi")
-async def debug_kimi():
-    """Test Kimi API directly — returns raw response for diagnosis."""
-    import base64, io, re
+@app.get("/api/debug/ai")
+async def debug_ai():
+    """Test Anthropic claude-opus-4-6 vision API — sends a test image, returns raw response."""
+    import base64, io
     from PIL import Image as PILImage
 
-    kimi_key = os.environ.get("KIMI_API_KEY", "")
-    if not kimi_key:
-        return {"error": "KIMI_API_KEY not set"}
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
+        return {"error": "ANTHROPIC_API_KEY not set"}
 
-    # Create a tiny 64x64 solid grey test image
+    # Create a small 64x64 solid grey test image
     img = PILImage.new("RGB", (64, 64), color=(128, 128, 128))
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=60)
     b64 = base64.b64encode(buf.getvalue()).decode()
 
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=kimi_key, base_url="https://api.moonshot.ai/v1")
-
-        # Test 1: vision-preview model with image
-        response = client.chat.completions.create(
-            model="moonshot-v1-8k-vision-preview",
-            messages=[{"role": "user", "content": [
-                {"type": "text", "text": 'Reply ONLY with valid JSON: {"has_defect": false, "confidence": 0.1, "defect_hint": null}'},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-            ]}],
-            max_tokens=300,
-            temperature=0.1,
+        import anthropic
+        client = anthropic.Anthropic(api_key=anthropic_key)
+        response = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=100,
+            system="You are a test assistant.",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+                    {"type": "text", "text": 'Reply ONLY with valid JSON: {"status": "ok", "model": "claude-opus-4-6", "vision": true}'},
+                ],
+            }],
         )
-        raw = response.choices[0].message.content
-        cleaned = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
-        cleaned = re.sub(r"\s*```\s*$", "", cleaned, flags=re.MULTILINE).strip()
+        raw = response.content[0].text.strip()
         try:
-            parsed = json.loads(cleaned)
+            parsed = json.loads(raw)
             parse_ok = True
         except Exception as pe:
             parsed = None
             parse_ok = str(pe)
 
         return {
-            "model": "moonshot-v1-8k-vision-preview",
-            "raw_response": repr(raw),
-            "cleaned": repr(cleaned),
+            "model": "claude-opus-4-6",
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+            "raw_response": raw,
             "parse_ok": parse_ok,
             "parsed": parsed,
         }
@@ -497,8 +548,7 @@ async def delete_job(job_id: str):
 async def health():
     keys = {
         "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
-        "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),
-        "KIMI_API_KEY": bool(os.environ.get("KIMI_API_KEY")),
+        "COST_LIMIT_USD": os.environ.get("COST_LIMIT_USD", "not set"),
     }
     return {"status": "ok", "api_keys": keys, "jobs_dir": str(JOBS_DIR)}
 
