@@ -6,7 +6,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: AI Consolidation** - Replace Kimi + Gemini with claude-opus-4-6 everywhere
+- [x] **Phase 1: AI Consolidation** - Replace Kimi + Gemini with claude-opus-4-6 everywhere (COMPLETE 2026-03-05)
 - [ ] **Phase 2: Persistence** - SQLite + Render Persistent Disk (survive restarts)
 - [ ] **Phase 3: Auth** - JWT multi-inspector login
 - [ ] **Phase 4: PDF Redesign** - Professional branded report with fpdf2
@@ -28,10 +28,10 @@
 **Plans**: 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Rewrite triage.py: Anthropic SDK, 4 tiles, location thresholds, cost tracking, errors.json
-- [ ] 01-02-PLAN.md — Rewrite classify.py: Anthropic SDK, image resize, IEC+BDDA dual scoring, cost tracking
-- [ ] 01-03-PLAN.md — Update analyze.py: OverloadedError handling, cost tracking, offshore prompt context
-- [ ] 01-04-PLAN.md — Update api.py + requirements.txt: single ANTHROPIC_API_KEY, /api/estimate, cost guardrails
+- [x] 01-01-PLAN.md — Rewrite triage.py: Anthropic SDK, 4 tiles, location thresholds, cost tracking, errors.json (commit: a5b8644)
+- [x] 01-02-PLAN.md — Rewrite classify.py: Anthropic SDK, image resize, IEC+BDDA dual scoring, cost tracking (commit: 23a293c)
+- [x] 01-03-PLAN.md — Update analyze.py: OverloadedError handling, cost tracking, offshore prompt context (commit: dbd8a81)
+- [x] 01-04-PLAN.md — Update api.py + requirements.txt: single ANTHROPIC_API_KEY, /api/estimate, cost guardrails (commit: 161b895)
 
 ### Phase 2: Persistence
 **Goal**: Job state and files survive Render restarts and redeployments using SQLite on a Persistent Disk.

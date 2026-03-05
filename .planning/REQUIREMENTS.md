@@ -25,11 +25,11 @@
 
 ### AI — Consolidate to claude-opus-4-6
 
-- [ ] **AI-01**: Triage stage uses `claude-opus-4-6` vision (replaces Kimi)
-- [ ] **AI-02**: Classify stage uses `claude-opus-4-6` vision (replaces Google Gemini)
-- [ ] **AI-03**: Analyze stage upgraded to `claude-opus-4-6` (was claude-opus-4-5)
-- [ ] **AI-04**: Single `ANTHROPIC_API_KEY` powers all 3 stages (remove `KIMI_API_KEY`, `GOOGLE_API_KEY`)
-- [ ] **AI-05**: Cost-per-turbine measured and logged per job
+- [x] **AI-01**: Triage stage uses `claude-opus-4-6` vision (replaces Kimi) — Plan 01-01
+- [x] **AI-02**: Classify stage uses `claude-opus-4-6` vision (replaces Google Gemini) — Plan 01-02
+- [x] **AI-03**: Analyze stage upgraded to `claude-opus-4-6` (was claude-opus-4-5) — Plan 01-03
+- [x] **AI-04**: Single `ANTHROPIC_API_KEY` powers all 3 stages (remove `KIMI_API_KEY`, `GOOGLE_API_KEY`) — Plan 01-04
+- [x] **AI-05**: Cost-per-turbine measured and logged per job — Plan 01-04
 
 ### Persistence — SQLite + Render Disk
 

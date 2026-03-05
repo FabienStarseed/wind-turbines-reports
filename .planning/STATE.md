@@ -1,8 +1,8 @@
 # BDDA Project State
 
-**Last updated:** 2026-03-04
-**Current phase:** Not started (planning complete)
-**Next action:** `/gsd:plan-phase 1`
+**Last updated:** 2026-03-05
+**Current phase:** Phase 1 — AI Consolidation (COMPLETE)
+**Next action:** Begin Phase 2 — Persistence
 
 ---
 
@@ -10,11 +10,36 @@
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | AI Consolidation | 🔲 Not started |
-| 2 | Persistence | 🔲 Not started |
-| 3 | Auth | 🔲 Not started |
-| 4 | PDF Redesign | 🔲 Not started |
-| 5 | Frontend UI | 🔲 Not started |
+| 1 | AI Consolidation | Done |
+| 2 | Persistence | Not started |
+| 3 | Auth | Not started |
+| 4 | PDF Redesign | Not started |
+| 5 | Frontend UI | Not started |
+
+---
+
+## Phase 1 — AI Consolidation (Complete)
+
+All 4 plans completed on 2026-03-05.
+
+| Plan | Name | Commit | Status |
+|------|------|--------|--------|
+| 01-01 | Rewrite triage.py — Anthropic SDK | a5b8644 | Done |
+| 01-02 | Rewrite classify.py — IEC+BDDA dual scoring | 23a293c | Done |
+| 01-03 | Update analyze.py — OverloadedError, cost, offshore | dbd8a81 | Done |
+| 01-04 | Update api.py + requirements.txt — Anthropic-only pipeline | 161b895 | Done |
+
+### Key Decisions Made
+
+1. All AI stages → `claude-opus-4-6` via `anthropic` SDK only
+2. `KIMI_API_KEY` and `GOOGLE_API_KEY` removed from pipeline entirely
+3. `openai` and `google-generativeai` removed from requirements.txt
+4. `estimate_cost()` uses conservative 30% flag / 20% critical pre-run estimate
+5. `IMAGE_CAP = 500` applied before triage begins
+6. `COST_LIMIT_USD` env var stops pipeline gracefully after triage or classify
+7. Per-stage costs (`triage_cost_usd`, `classify_cost_usd`, `analyze_cost_usd`, `total_cost_usd`) logged to state.json
+8. `location_type` (onshore/offshore) flows from upload form through turbine_meta to all AI stages
+9. `analyze_critical_defects()` returns `Tuple[List[DeepAnalysis], float]` — api.py unpacks tuple
 
 ---
 
@@ -23,10 +48,21 @@
 - **Deployed at:** https://wind-turbines-reports.onrender.com
 - **Repo:** FabienStarseed/wind-turbines-reports → main branch → Render autodeploy
 - **Branch:** claude/frosty-banach (push to main to deploy)
-- **Blocking issue:** Moonshot account needs top-up to test V1 triage (Phase 1 eliminates this)
+- **Blocking issue:** None — Phase 1 complete, all AI stages use ANTHROPIC_API_KEY only
 - **Key decision:** All AI stages → `claude-opus-4-6` via `anthropic` SDK only
-- **Stack additions:** SQLAlchemy, python-jose, passlib, fpdf2
-- **Stack removals:** openai (Kimi), google-generativeai (Gemini), xhtml2pdf, python-bidi
+- **Stack additions (Phase 2+):** SQLAlchemy, python-jose, passlib, fpdf2
+- **Stack removals done:** openai (Kimi), google-generativeai (Gemini) removed from requirements.txt
+
+---
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 01 | 01 | ~15 min | 1 | 1 |
+| 01 | 02 | ~4 min | 2 | 1 |
+| 01 | 03 | ~8 min | 1 | 1 |
+| 01 | 04 | ~56 min | 2 | 2 |
 
 ---
 
