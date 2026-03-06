@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-03-06
 **Current phase:** Phase 3 — Auth (In Progress)
-**Next action:** Execute Plan 03-03 — api.py auth integration (guards, ownership)
+**Next action:** Execute Plan 03-04 — login.html frontend page
 
 ---
 
@@ -12,7 +12,7 @@
 |-------|------|--------|
 | 1 | AI Consolidation | Done |
 | 2 | Persistence | Done |
-| 3 | Auth | In Progress (2/4 plans done) |
+| 3 | Auth | In Progress (3/4 plans done) |
 | 4 | PDF Redesign | Not started |
 | 5 | Frontend UI | Not started |
 
@@ -71,7 +71,7 @@ All 4 plans completed on 2026-03-05.
 |------|------|--------|--------|
 | 03-01 | User model + schema migration | cf9c904 | Done |
 | 03-02 | auth.py — JWT helpers, password hashing | 13752cf | Done |
-| 03-03 | api.py auth integration — guards, ownership | pending | Not started |
+| 03-03 | api.py auth integration — guards, ownership | d7463fe | Done |
 | 03-04 | (pending) | pending | Not started |
 
 ### Key Decisions Made
@@ -84,6 +84,10 @@ All 4 plans completed on 2026-03-05.
 6. PyJWT 2.11.0 chosen over python-jose (abandoned) per FastAPI official docs
 7. pwdlib[bcrypt] chosen over passlib (abandoned, breaks with bcrypt 4.x+) per FastAPI official docs
 8. Silent refresh: new token minted in get_current_user() and attached to request.state.new_token when <60 min remaining
+9. GET /login registered before static mount — static app.mount("/") must be last route registration
+10. ADMIN_SECRET at module level — consistent guard behavior across all requests
+11. DELETE ownership check before directory deletion — prevents data loss on unauthorized requests
+12. lifespan order: init_db -> migrate_schema -> _seed_admin_user -> _mark_interrupted_jobs_failed (migrate before seed)
 
 ---
 
@@ -92,7 +96,7 @@ All 4 plans completed on 2026-03-05.
 - **Deployed at:** https://wind-turbines-reports.onrender.com
 - **Repo:** FabienStarseed/wind-turbines-reports → main branch → Render autodeploy
 - **Branch:** claude/frosty-banach (push to main to deploy)
-- **Blocking issue:** None — Phase 3 Plan 03-02 complete, Plan 03-03 (api.py auth integration) next
+- **Blocking issue:** None — Phase 3 Plan 03-03 complete, Plan 03-04 (login.html) next
 - **Key decision:** All AI stages → `claude-opus-4-6` via `anthropic` SDK only
 - **Stack additions (Phase 2+):** SQLAlchemy, PyJWT, pwdlib[bcrypt]
 - **Stack removals done:** openai (Kimi), google-generativeai (Gemini) removed from requirements.txt
@@ -111,6 +115,7 @@ All 4 plans completed on 2026-03-05.
 | 02 | 03 | ~2 min | 1 | 1 |
 | 03 | 01 | 8 min | 1 | 1 |
 | 03 | 02 | 2 min | 1 | 2 |
+| 03 | 03 | 3 min | 2 | 1 |
 
 ---
 
