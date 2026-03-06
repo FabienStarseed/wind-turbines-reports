@@ -44,7 +44,7 @@
 - [ ] **AUTH-02**: JWT token issued on login (8-hour session)
 - [ ] **AUTH-03**: All upload/status/download endpoints require valid token
 - [ ] **AUTH-04**: Admin can create new inspector accounts via protected endpoint
-- [ ] **AUTH-05**: Each job linked to the inspector who created it
+- [x] **AUTH-05**: Each job linked to the inspector who created it
 
 ### PDF — Professional Branded Report
 

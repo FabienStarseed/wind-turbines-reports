@@ -1,8 +1,8 @@
 # BDDA Project State
 
 **Last updated:** 2026-03-06
-**Current phase:** Phase 2 — Persistence (In Progress)
-**Next action:** Execute Plan 02-02 — Migrate backend/api.py to SQLAlchemy
+**Current phase:** Phase 3 — Auth (In Progress)
+**Next action:** Execute Plan 03-02 — auth.py (JWT helpers, password hashing)
 
 ---
 
@@ -11,8 +11,8 @@
 | Phase | Name | Status |
 |-------|------|--------|
 | 1 | AI Consolidation | Done |
-| 2 | Persistence | In Progress (2/3 plans done) |
-| 3 | Auth | Not started |
+| 2 | Persistence | Done |
+| 3 | Auth | In Progress (1/3 plans done) |
 | 4 | PDF Redesign | Not started |
 | 5 | Frontend UI | Not started |
 
@@ -65,12 +65,29 @@ All 4 plans completed on 2026-03-05.
 
 ---
 
+## Phase 3 — Auth (In Progress)
+
+| Plan | Name | Commit | Status |
+|------|------|--------|--------|
+| 03-01 | User model + schema migration | cf9c904 | Done |
+| 03-02 | auth.py — JWT helpers, password hashing | pending | Not started |
+| 03-03 | api.py auth integration — guards, ownership | pending | Not started |
+
+### Key Decisions Made
+
+1. User.id stored as String(36) UUID text — explicit and portable for SQLite-only project
+2. owner_id on Job is nullable — legacy jobs have NULL, admin sees all, inspectors see only their own
+3. _seed_admin_user uses lazy import of auth.hash_password inside function body — breaks circular import
+4. migrate_schema uses PRAGMA table_info(jobs) pre-check — Render SQLite 3.27.2 lacks ADD COLUMN IF NOT EXISTS
+
+---
+
 ## Context for Next Session
 
 - **Deployed at:** https://wind-turbines-reports.onrender.com
 - **Repo:** FabienStarseed/wind-turbines-reports → main branch → Render autodeploy
 - **Branch:** claude/frosty-banach (push to main to deploy)
-- **Blocking issue:** None — Phase 2 plans 02-01 and 02-03 complete, plan 02-02 remains
+- **Blocking issue:** None — Phase 3 Plan 03-01 complete, Plan 03-02 (auth.py) next
 - **Key decision:** All AI stages → `claude-opus-4-6` via `anthropic` SDK only
 - **Stack additions (Phase 2+):** SQLAlchemy, python-jose, passlib, fpdf2
 - **Stack removals done:** openai (Kimi), google-generativeai (Gemini) removed from requirements.txt
@@ -87,6 +104,7 @@ All 4 plans completed on 2026-03-05.
 | 01 | 04 | ~56 min | 2 | 2 |
 | 02 | 01 | ~2 min | 2 | 2 |
 | 02 | 03 | ~2 min | 1 | 1 |
+| 03 | 01 | 8 min | 1 | 1 |
 
 ---
 
