@@ -20,3 +20,6 @@ xhtml2pdf>=0.2.11        # Pure Python PDF renderer (no system deps needed)
 
 # ─── Utilities ────────────────────────────────────────────────────────────────
 python-dateutil>=2.9.0
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0
