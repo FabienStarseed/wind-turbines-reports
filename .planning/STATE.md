@@ -1,8 +1,8 @@
 # BDDA Project State
 
-**Last updated:** 2026-03-05
-**Current phase:** Phase 1 — AI Consolidation (COMPLETE)
-**Next action:** Begin Phase 2 — Persistence
+**Last updated:** 2026-03-06
+**Current phase:** Phase 2 — Persistence (In Progress)
+**Next action:** Continue Phase 2 — Plans 02-01 and 02-02 still pending
 
 ---
 
@@ -11,7 +11,7 @@
 | Phase | Name | Status |
 |-------|------|--------|
 | 1 | AI Consolidation | Done |
-| 2 | Persistence | Not started |
+| 2 | Persistence | In Progress (1/3 plans done) |
 | 3 | Auth | Not started |
 | 4 | PDF Redesign | Not started |
 | 5 | Frontend UI | Not started |
@@ -43,12 +43,29 @@ All 4 plans completed on 2026-03-05.
 
 ---
 
+## Phase 2 — Persistence (In Progress)
+
+| Plan | Name | Commit | Status |
+|------|------|--------|--------|
+| 02-01 | Create backend/database.py — SQLAlchemy ORM, Job model, CRUD | pending | Not started |
+| 02-02 | Migrate backend/api.py — remove _jobs dict, SQLite endpoints | pending | Not started |
+| 02-03 | Update render.yaml — persistent disk, clean env vars | 33ce8ff | Done |
+
+### Key Decisions Made
+
+1. Persistent disk: 1GB at /data, name bdda-data — mountPath matches DATA_DIR default in database.py
+2. GOOGLE_API_KEY and KIMI_API_KEY removed from render.yaml (Phase 1 cleanup)
+3. COST_LIMIT_USD added to render.yaml env vars (was missing despite Phase 1 implementing it)
+4. Prominent comment block in render.yaml: paid Starter tier required ($7/month) for persistent disk
+
+---
+
 ## Context for Next Session
 
 - **Deployed at:** https://wind-turbines-reports.onrender.com
 - **Repo:** FabienStarseed/wind-turbines-reports → main branch → Render autodeploy
 - **Branch:** claude/frosty-banach (push to main to deploy)
-- **Blocking issue:** None — Phase 1 complete, all AI stages use ANTHROPIC_API_KEY only
+- **Blocking issue:** None — Phase 2 plan 02-03 complete, plans 02-01 and 02-02 remain
 - **Key decision:** All AI stages → `claude-opus-4-6` via `anthropic` SDK only
 - **Stack additions (Phase 2+):** SQLAlchemy, python-jose, passlib, fpdf2
 - **Stack removals done:** openai (Kimi), google-generativeai (Gemini) removed from requirements.txt
@@ -63,6 +80,7 @@ All 4 plans completed on 2026-03-05.
 | 01 | 02 | ~4 min | 2 | 1 |
 | 01 | 03 | ~8 min | 1 | 1 |
 | 01 | 04 | ~56 min | 2 | 2 |
+| 02 | 03 | ~2 min | 1 | 1 |
 
 ---
 
