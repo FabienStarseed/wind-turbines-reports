@@ -46,7 +46,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Create backend/database.py: SQLAlchemy 2.0 engine, Job model, CRUD helpers; add sqlalchemy>=2.0 to requirements.txt
+- [x] 02-01-PLAN.md — Create backend/database.py: SQLAlchemy 2.0 engine, Job model, CRUD helpers; add sqlalchemy>=2.0 to requirements.txt (commit: f2fb809)
 - [ ] 02-02-PLAN.md — Migrate backend/api.py: remove _jobs dict, add lifespan startup, SQLite-backed endpoints, disk space guard, image deletion after triage
 - [x] 02-03-PLAN.md — Update render.yaml: add persistent disk config, clean stale env vars, note paid-tier requirement (commit: 33ce8ff)
 

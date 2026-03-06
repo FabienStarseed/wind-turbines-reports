@@ -33,7 +33,7 @@
 
 ### Persistence — SQLite + Render Disk
 
-- [ ] **PERS-01**: Job state stored in SQLite (survives Render restarts)
+- [ ] **PERS-01**: Job state stored in SQLite (survives Render restarts) — database.py created (Plan 02-01); api.py migration pending (Plan 02-02)
 - [ ] **PERS-02**: Uploaded images and PDFs stored on Render Persistent Disk
 - [ ] **PERS-03**: Job history visible across sessions (no more lost jobs on restart)
 - [x] **PERS-04**: render.yaml updated with persistent disk config — Plan 02-03
