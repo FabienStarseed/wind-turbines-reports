@@ -2,89 +2,92 @@
 
 **Branch:** `claude/frosty-banach`
 **Last updated:** 2026-03-06
-**Status:** Phase 2 CLOSED ✅ — Phase 3 (Auth) is next
+**Status:** Phase 3 CLOSED ✅ — Phase 4 (PDF Redesign) is next
 
 ---
 
 ## What was just done
 
-### Phase 1: AI Consolidation ✅ COMPLETE
-Replaced Kimi (OpenAI client) + Gemini with claude-opus-4-6 via Anthropic SDK across all 3 AI stages:
-- `backend/triage.py` — full rewrite: 4-tile triage, 0.3/0.2 onshore/offshore thresholds, errors.json logging, cost tracking
-- `backend/classify.py` — full rewrite: Anthropic SDK, image resize ≤1568px, IEC Cat 0-4 + BDDA 0-10 dual scoring
-- `backend/analyze.py` — updated: OverloadedError retry, cost tracking, offshore context in prompt
-- `backend/api.py` — Anthropic-only pipeline: COST_LIMIT_USD, 500-image cap, /api/estimate, /api/debug/ai
-- `requirements.txt` — openai + google-generativeai removed
+### Phase 3: Auth ✅ COMPLETE (fully verified 5/5 + 15/15 checks)
 
-### Phase 2: Persistence ✅ COMPLETE (fully closed)
-SQLite persistence replacing in-memory `_jobs` dict:
-- `backend/database.py` — NEW: SQLAlchemy 2.0, WAL mode, Job ORM model, all CRUD helpers
-- `backend/api.py` — migrated: lifespan startup (marks interrupted jobs failed), SQLite-backed endpoints, image cleanup after triage, 507 disk-full guard, 30-day history filter, manual job delete
-- `render.yaml` — updated: persistent disk block (1GB at /data), stale KIMI/GOOGLE keys removed
-- `requirements.txt` — sqlalchemy>=2.0 added
-
-**Gap fixes applied:**
-- `"failed": -1` added to `stage_progress` dict in status endpoint
-- `stage in ("error", "failed")` condition for error field population
-- PERS-01, PERS-02, PERS-03 marked complete in REQUIREMENTS.md
+JWT authentication + endpoint protection:
+- `backend/auth.py` — NEW: PyJWT + pwdlib/bcrypt, `get_current_user` dependency, silent refresh via `request.state.new_token`
+- `backend/database.py` — User ORM model, `migrate_schema()` (PRAGMA-safe), `_seed_admin_user()`, `owner_id` FK on Job
+- `backend/api.py` — 5 endpoints protected, `POST /api/auth/token`, `POST /api/admin/create-user`, `GET /login`, silent refresh middleware, `expose_headers=["X-New-Token"]`
+- `frontend/login.html` — functional login page (unstyled — Phase 5 redesigns)
+- `render.yaml` — `SECRET_KEY`, `ADMIN_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` env vars
 
 ---
 
-## Immediate next step (do this first)
+## ⚠️ Before deploying Phase 3 to Render
 
-Start Phase 3: Auth (JWT login)
+Set these in Render Dashboard → Environment (never in repo — sync:false):
+1. `SECRET_KEY` → run `openssl rand -hex 32` and paste result
+2. `ADMIN_SECRET` → any strong random string (you'll use this header to create inspector accounts)
+3. `ADMIN_PASSWORD` → your admin password
 
+After deploy, create inspector accounts:
+```bash
+curl -X POST https://wind-turbines-reports.onrender.com/api/admin/create-user \
+  -H "X-Admin-Secret: YOUR_ADMIN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "inspector1", "password": "strong_password"}'
 ```
-/gsd:discuss-phase 3
-```
-
-Then, once context is captured:
-```
-/gsd:plan-phase 3
-```
-
-Then execute:
-```
-/gsd:execute-phase 3
-```
-
-🟢 **Sonnet is fine** for Phase 3 — it's mechanical JWT implementation.
 
 ---
 
-## Key technical decisions (locked — do not re-discuss)
+## Immediate next step
+
+Start Phase 4: PDF Redesign
+
+```
+/gsd:discuss-phase 4
+```
+
+🔶 **Switch to Opus** for Phase 4 — PDF layout design is complex visual/architectural work.
+
+---
+
+## Key technical decisions (locked)
+
+### Auth Stack (Phase 3)
+- Library: PyJWT==2.11.0 (`import jwt`) — NOT python-jose (abandoned)
+- Hashing: pwdlib[bcrypt]==0.3.0 with `PasswordHash((BcryptHasher(),))` — NOT `PasswordHash.recommended()` (gives Argon2), NOT passlib (broken)
+- JWT payload: `{ "sub": username, "user_id": uuid_str, "is_admin": bool, "exp": unix_ts }`
+- Token lifetime: 8 hours
+- Silent refresh: new token in `X-New-Token` response header when <1h remaining
+- Token storage: `localStorage['bdda_token']`
+- Admin auth: `X-Admin-Secret` header (NOT JWT — separate secret for create-user endpoint)
+- SQLite migration: PRAGMA `table_info(jobs)` before `ALTER TABLE` (Render SQLite 3.27.2 — no `IF NOT EXISTS`)
+- Legacy jobs (pre-auth): `owner_id = NULL` → admin sees them, inspectors do not
+- Public endpoints (no auth): `/api/estimate`, `/api/health`, `/api/debug/ai`
 
 ### AI Stack (Phase 1)
 - Model: `claude-opus-4-6` everywhere (triage, classify, analyze)
-- Pricing: $5/M input, $25/M output (all 3 stages consistent)
-- Triage: 4 tiles per image, 0.3 onshore / 0.2 offshore confidence threshold
-- Images: raw base64 only — NO `data:image/...` URI prefix (Anthropic SDK requirement)
-- Errors: per-image retry once → log to `errors.json` → continue (never fail whole job)
+- Pricing: $5/M input, $25/M output
+- Triage: 4 tiles, 0.3 onshore / 0.2 offshore threshold
+- Images: raw base64 only — NO `data:image/...` URI prefix
 
 ### Persistence (Phase 2)
-- SQLAlchemy 2.0 sync + SQLite (no async driver — project pattern)
-- `DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))` — set `DATA_DIR=./data` for local dev
-- WAL mode enabled (concurrent reads during pipeline writes)
-- Raw images deleted after triage completes (DJI P1 = 15-30MB each)
-- Job history: last 30 days only
-- Interrupted jobs: marked `stage="failed"` on startup
-- Disk full: HTTP 507 refusal (not silent auto-delete)
-- Render: 1GB persistent disk at /data — **requires Starter tier ($7/month), not free tier**
+- SQLAlchemy 2.0 sync + SQLite WAL
+- `DATA_DIR` env var: `/data` on Render, `./data` local
+- Raw images deleted after triage (15-30MB DJI P1 each)
+- 30-day job history, 507 on disk full, interrupted jobs → failed on restart
 
 ### Defect Classification
-- IEC Cat 0-4 (international standard) + BDDA 0-10 (custom scoring)
-- `has_critical` uses `iec_category >= 3` (Cat 3 = Planned repair urgently needed)
-- Taxonomy: 56 defect types in `backend/taxonomy.py`
+- IEC Cat 0-4 + BDDA 0-10 dual scoring
+- `has_critical` = `iec_category >= 3`
+- 56 defect types in `backend/taxonomy.py`
 
 ---
 
 ## Project overview
 
-**What:** BDDA (Blade Defect Detection Agent) — AI pipeline for drone wind turbine blade inspection
-**Stack:** FastAPI + SQLAlchemy + Anthropic SDK + fpdf2 + Tailwind/Alpine.js (Phase 5)
-**Deploy:** Render.com (currently free tier, needs Starter for Phase 2 persistent disk)
+**What:** BDDA — AI pipeline for drone wind turbine blade inspection
+**Stack:** FastAPI + SQLAlchemy + Anthropic SDK + PyJWT + pwdlib + fpdf2 (Phase 4) + Tailwind/Alpine.js (Phase 5)
+**Deploy:** Render.com Starter tier ($7/mo — needed for 1GB persistent disk)
 **Live URL:** https://wind-turbines-reports.onrender.com
-**Real test images:** `/Users/fabien/Desktop/CLAUDE/applications/drone/bdda/sources/resume/images/enercon/EN01/` (63 DJI P1 JPGs from Aug 2023)
+**Test images:** `/Users/fabien/Desktop/CLAUDE/applications/drone/bdda/sources/resume/images/enercon/EN01/` (63 DJI P1 JPGs)
 
 ---
 
@@ -94,14 +97,13 @@ Then execute:
 |-------|------|--------|
 | 1 | AI Consolidation | ✅ Complete |
 | 2 | Persistence | ✅ Complete |
-| 3 | Auth (JWT login) | ⬜ Not started |
+| 3 | Auth (JWT login) | ✅ Complete |
 | 4 | PDF Redesign (fpdf2) | ⬜ Not started |
 | 5 | Frontend UI (Tailwind+Alpine) | ⬜ Not started |
 
 **Requirements remaining:**
-- AUTH-01..05: Inspector login, JWT, protected endpoints, admin account creation
-- PDF-01..06: fpdf2, DroneWind Asia branding, defect images inline, severity colour-coding
-- UI-01..06: Tailwind+Alpine, login page, upload form, live progress, job history, mobile
+- PDF-01..06: fpdf2, DroneWind Asia branding, defect images inline, severity colour-coding, executive summary, per-blade defect map
+- UI-01..06: Tailwind+Alpine, login page redesign, upload form, live progress, job history, mobile-responsive
 
 ---
 
@@ -113,8 +115,8 @@ Any charts, graphs, or dashboards generated for this project → **view in Nimba
 
 ## Reminders
 
-- 🔶 **Switch to Opus** for: Phase 4 PDF layout design, Phase 5 UI architecture
-- 🟢 **Sonnet fine** for: Phase 3 Auth (mechanical JWT implementation)
+- 🔶 **Switch to Opus** for Phase 4 PDF layout design — complex visual/architectural decisions
+- 🔶 **Switch to Opus** for Phase 5 UI architecture — full frontend redesign
 - Push directly to `main` — no PRs needed (solo developer)
 - GSD tools: `/Users/fabien/.claude/get-shit-done/bin/gsd-tools.cjs`
 - Worktree path: `/Users/fabien/Desktop/CLAUDE/applications/drone/bdda/.claude/worktrees/frosty-banach/`
