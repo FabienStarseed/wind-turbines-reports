@@ -2,7 +2,7 @@
 
 **Branch:** `claude/frosty-banach`
 **Last updated:** 2026-03-06
-**Status:** Phase 2 execution complete — verification + phase close pending
+**Status:** Phase 2 CLOSED ✅ — Phase 3 (Auth) is next
 
 ---
 
@@ -16,36 +16,39 @@ Replaced Kimi (OpenAI client) + Gemini with claude-opus-4-6 via Anthropic SDK ac
 - `backend/api.py` — Anthropic-only pipeline: COST_LIMIT_USD, 500-image cap, /api/estimate, /api/debug/ai
 - `requirements.txt` — openai + google-generativeai removed
 
-### Phase 2: Persistence ✅ COMPLETE (code committed, verification pending)
+### Phase 2: Persistence ✅ COMPLETE (fully closed)
 SQLite persistence replacing in-memory `_jobs` dict:
 - `backend/database.py` — NEW: SQLAlchemy 2.0, WAL mode, Job ORM model, all CRUD helpers
 - `backend/api.py` — migrated: lifespan startup (marks interrupted jobs failed), SQLite-backed endpoints, image cleanup after triage, 507 disk-full guard, 30-day history filter, manual job delete
 - `render.yaml` — updated: persistent disk block (1GB at /data), stale KIMI/GOOGLE keys removed
 - `requirements.txt` — sqlalchemy>=2.0 added
 
+**Gap fixes applied:**
+- `"failed": -1` added to `stage_progress` dict in status endpoint
+- `stage in ("error", "failed")` condition for error field population
+- PERS-01, PERS-02, PERS-03 marked complete in REQUIREMENTS.md
+
 ---
 
 ## Immediate next step (do this first)
 
-Run verification + phase close for Phase 2:
+Start Phase 3: Auth (JWT login)
 
 ```
-# 1. Verify Phase 2 goal achievement
-spawn gsd-verifier for phase 02 (checks backend/api.py, backend/database.py, render.yaml)
-
-# 2. Fix any gaps found (usually minor)
-
-# 3. Mark Phase 2 complete
-node /Users/fabien/.claude/get-shit-done/bin/gsd-tools.cjs phase complete "02"
-
-# 4. Commit
-git add .planning/ && git commit -m "docs(phase-02): complete Phase 2 — SQLite persistence done"
-
-# 5. Push to main (merge worktree)
-git push origin claude/frosty-banach
+/gsd:discuss-phase 3
 ```
 
-**Missing:** `02-02-SUMMARY.md` — executor hit rate limit mid-run but commit `8db14fd` shows api.py was migrated. Create summary manually or re-run.
+Then, once context is captured:
+```
+/gsd:plan-phase 3
+```
+
+Then execute:
+```
+/gsd:execute-phase 3
+```
+
+🟢 **Sonnet is fine** for Phase 3 — it's mechanical JWT implementation.
 
 ---
 
@@ -90,7 +93,7 @@ git push origin claude/frosty-banach
 | Phase | Name | Status |
 |-------|------|--------|
 | 1 | AI Consolidation | ✅ Complete |
-| 2 | Persistence | ✅ Code done, close pending |
+| 2 | Persistence | ✅ Complete |
 | 3 | Auth (JWT login) | ⬜ Not started |
 | 4 | PDF Redesign (fpdf2) | ⬜ Not started |
 | 5 | Frontend UI (Tailwind+Alpine) | ⬜ Not started |
