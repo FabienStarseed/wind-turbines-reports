@@ -14,7 +14,8 @@ import time
 import traceback
 import uuid
 import zipfile
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -22,30 +23,21 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile, BackgroundTa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select, update as sa_update
 
-# ─── APP SETUP ────────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="BDDA — Blade Defect Detection Agent",
-    description="AI-powered wind turbine drone inspection analysis",
-    version="1.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+from database import (
+    DATA_DIR, JOBS_DIR, init_db, get_db,
+    get_job, save_new_job, update_job, set_stage,
+    list_jobs_last_30_days, Job
 )
 
 # ─── PATHS ────────────────────────────────────────────────────────────────────
 
+# DATA_DIR and JOBS_DIR imported from database.py
+# FRONTEND_DIR and TEMPLATES_DIR remain relative to this file
 BASE_DIR = Path(__file__).parent.parent
-JOBS_DIR = BASE_DIR / "jobs"
 FRONTEND_DIR = BASE_DIR / "frontend"
 TEMPLATES_DIR = BASE_DIR / "templates"
-JOBS_DIR.mkdir(exist_ok=True)
 
 # ─── COST ESTIMATION ──────────────────────────────────────────────────────────
 
@@ -89,40 +81,64 @@ def estimate_cost(image_count: int) -> dict:
     }
 
 
-# ─── JOB STATE ────────────────────────────────────────────────────────────────
+# ─── LIFESPAN ─────────────────────────────────────────────────────────────────
 
-# In-memory job registry (survives within a process; jobs re-read from disk on restart)
-_jobs: Dict[str, Dict] = {}
-
-
-def get_job(job_id: str) -> Optional[Dict]:
-    if job_id in _jobs:
-        return _jobs[job_id]
-    # Try loading from disk
-    state_file = JOBS_DIR / job_id / "state.json"
-    if state_file.exists():
-        with open(state_file) as f:
-            _jobs[job_id] = json.load(f)
-        return _jobs[job_id]
-    return None
+INTERRUPTED_STAGES = {"triaging", "classifying", "analyzing", "ingesting", "generating_report", "queued"}
 
 
-def save_job(job_id: str, state: Dict):
-    _jobs[job_id] = state
-    job_dir = JOBS_DIR / job_id
-    job_dir.mkdir(exist_ok=True)
-    with open(job_dir / "state.json", "w") as f:
-        json.dump(state, f, indent=2, default=str)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    init_db()
+    _mark_interrupted_jobs_failed()
+    yield
+    # Shutdown — nothing needed
 
 
-def update_job(job_id: str, **kwargs):
-    state = get_job(job_id) or {}
-    state.update(kwargs)
-    save_job(job_id, state)
+def _mark_interrupted_jobs_failed():
+    """On restart, mark any in-progress jobs as failed (per CONTEXT.md Area A)."""
+    with get_db() as session:
+        stmt = (
+            sa_update(Job)
+            .where(Job.stage.in_(INTERRUPTED_STAGES))
+            .values(
+                stage="failed",
+                stage_message="Job interrupted by server restart",
+            )
+        )
+        session.execute(stmt)
+        session.commit()
 
 
-def set_stage(job_id: str, stage: str, message: str = ""):
-    update_job(job_id, stage=stage, stage_message=message, updated_at=datetime.now().isoformat())
+# ─── APP SETUP ────────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="BDDA — Blade Defect Detection Agent",
+    description="AI-powered wind turbine drone inspection analysis",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ─── DISK SPACE GUARD ─────────────────────────────────────────────────────────
+
+
+def check_disk_space():
+    """Refuse uploads if less than 100MB free on the data disk (per CONTEXT.md Area D)."""
+    usage = shutil.disk_usage(DATA_DIR)
+    free_mb = usage.free / (1024 * 1024)
+    if free_mb < 100:
+        raise HTTPException(
+            status_code=507,
+            detail="Server storage full — please contact the administrator.",
+        )
 
 
 # ─── PIPELINE ─────────────────────────────────────────────────────────────────
@@ -191,6 +207,11 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         triage_cost = summary.triage_cost_usd
         running_cost += triage_cost
         update_job(job_id, flagged_images=summary.flagged_images, triage_cost_usd=triage_cost)
+
+        # Delete uploaded images after triage — they are 15-30MB each and not needed
+        images_dir = job_dir / "images"
+        if images_dir.exists():
+            shutil.rmtree(images_dir)
 
         # Cost limit check after triage
         if running_cost > cost_limit_usd:
@@ -268,7 +289,7 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
             stage="complete",
             stage_message="Report ready",
             pdf_path=str(pdf_path),
-            completed_at=datetime.now().isoformat(),
+            completed_at=datetime.now(timezone.utc),
             total_cost_usd=round(running_cost, 4),
         )
 
@@ -279,7 +300,7 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
             stage="error",
             stage_message=str(e),
             error_traceback=tb,
-            failed_at=datetime.now().isoformat(),
+            failed_at=datetime.now(timezone.utc),
         )
 
 
@@ -341,6 +362,8 @@ async def upload_inspection(
     location_type: Optional[str] = Form(None),
     images: UploadFile = File(...),
 ):
+    check_disk_space()
+
     job_id = str(uuid.uuid4())[:8]
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -375,13 +398,12 @@ async def upload_inspection(
         "location_type": location_type if location_type in ("onshore", "offshore") else "onshore",
     }
 
-    save_job(job_id, {
+    save_new_job({
         "job_id": job_id,
         "stage": "queued",
         "stage_message": "Job queued",
         "turbine_meta": turbine_meta,
         "image_count": image_count,
-        "created_at": datetime.now().isoformat(),
     })
 
     # Compute cost estimate before starting
@@ -515,30 +537,21 @@ async def download_report(job_id: str):
 
 @app.get("/api/jobs")
 async def list_jobs():
-    """List recent jobs (last 20)."""
-    jobs = []
-    for state_file in sorted(JOBS_DIR.glob("*/state.json"), reverse=True)[:20]:
-        try:
-            with open(state_file) as f:
-                state = json.load(f)
-            jobs.append({
-                "job_id": state["job_id"],
-                "turbine_id": state.get("turbine_meta", {}).get("turbine_id"),
-                "stage": state.get("stage"),
-                "created_at": state.get("created_at"),
-                "completed_at": state.get("completed_at"),
-            })
-        except Exception:
-            pass
-    return jobs
+    """List jobs created in the last 30 days (per CONTEXT.md Area A — 30-day retention window)."""
+    return list_jobs_last_30_days()
 
 
 @app.delete("/api/jobs/{job_id}")
 async def delete_job(job_id: str):
+    """Delete job — removes SQLite row AND job directory (per CONTEXT.md Area A — manual delete)."""
     job_dir = JOBS_DIR / job_id
     if job_dir.exists():
         shutil.rmtree(job_dir)
-    _jobs.pop(job_id, None)
+    with get_db() as session:
+        job = session.scalars(select(Job).where(Job.job_id == job_id)).first()
+        if job:
+            session.delete(job)
+            session.commit()
     return {"deleted": job_id}
 
 
@@ -550,7 +563,7 @@ async def health():
         "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "COST_LIMIT_USD": os.environ.get("COST_LIMIT_USD", "not set"),
     }
-    return {"status": "ok", "api_keys": keys, "jobs_dir": str(JOBS_DIR)}
+    return {"status": "ok", "api_keys": keys, "jobs_dir": str(JOBS_DIR), "data_dir": str(DATA_DIR)}
 
 
 # ─── STATIC FILES ────────────────────────────────────────────────────────────
