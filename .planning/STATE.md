@@ -1,8 +1,8 @@
 # BDDA Project State
 
 **Last updated:** 2026-03-06
-**Current phase:** Phase 3 — Auth (In Progress)
-**Next action:** Execute Plan 03-04 — login.html frontend page
+**Current phase:** Phase 3 — Auth (Complete)
+**Next action:** Phase 4 — PDF Redesign (or push claude/frosty-banach → main to deploy Phase 3)
 
 ---
 
@@ -12,7 +12,7 @@
 |-------|------|--------|
 | 1 | AI Consolidation | Done |
 | 2 | Persistence | Done |
-| 3 | Auth | In Progress (3/4 plans done) |
+| 3 | Auth | Done |
 | 4 | PDF Redesign | Not started |
 | 5 | Frontend UI | Not started |
 
@@ -72,7 +72,7 @@ All 4 plans completed on 2026-03-05.
 | 03-01 | User model + schema migration | cf9c904 | Done |
 | 03-02 | auth.py — JWT helpers, password hashing | 13752cf | Done |
 | 03-03 | api.py auth integration — guards, ownership | d7463fe | Done |
-| 03-04 | (pending) | pending | Not started |
+| 03-04 | Login page + auth env vars in render.yaml | a31645f | Done |
 
 ### Key Decisions Made
 
@@ -88,6 +88,9 @@ All 4 plans completed on 2026-03-05.
 10. ADMIN_SECRET at module level — consistent guard behavior across all requests
 11. DELETE ownership check before directory deletion — prevents data loss on unauthorized requests
 12. lifespan order: init_db -> migrate_schema -> _seed_admin_user -> _mark_interrupted_jobs_failed (migrate before seed)
+13. Login form uses URLSearchParams (not JSON) — FastAPI OAuth2PasswordRequestForm requires x-www-form-urlencoded
+14. ADMIN_USERNAME committed as value:admin (non-secret default); all passwords use sync:false in render.yaml
+15. Render sync:false pattern: secrets never in repo; Render Dashboard prompts on first deploy
 
 ---
 
@@ -96,10 +99,11 @@ All 4 plans completed on 2026-03-05.
 - **Deployed at:** https://wind-turbines-reports.onrender.com
 - **Repo:** FabienStarseed/wind-turbines-reports → main branch → Render autodeploy
 - **Branch:** claude/frosty-banach (push to main to deploy)
-- **Blocking issue:** None — Phase 3 Plan 03-03 complete, Plan 03-04 (login.html) next
+- **Blocking issue:** None — Phase 3 complete. Before deploying: set SECRET_KEY, ADMIN_SECRET, ADMIN_PASSWORD in Render Dashboard
 - **Key decision:** All AI stages → `claude-opus-4-6` via `anthropic` SDK only
 - **Stack additions (Phase 2+):** SQLAlchemy, PyJWT, pwdlib[bcrypt]
 - **Stack removals done:** openai (Kimi), google-generativeai (Gemini) removed from requirements.txt
+- **Phase 3 complete:** JWT auth, admin create-user, ownership enforcement, login.html, render.yaml secrets
 
 ---
 
@@ -116,6 +120,7 @@ All 4 plans completed on 2026-03-05.
 | 03 | 01 | 8 min | 1 | 1 |
 | 03 | 02 | 2 min | 1 | 2 |
 | 03 | 03 | 3 min | 2 | 1 |
+| 03 | 04 | 10 min | 2 | 2 |
 
 ---
 

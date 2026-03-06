@@ -8,7 +8,7 @@
 
 - [x] **Phase 1: AI Consolidation** - Replace Kimi + Gemini with claude-opus-4-6 everywhere (COMPLETE 2026-03-05)
 - [ ] **Phase 2: Persistence** - SQLite + Render Persistent Disk (survive restarts)
-- [ ] **Phase 3: Auth** - JWT multi-inspector login
+- [x] **Phase 3: Auth** - JWT multi-inspector login (COMPLETE 2026-03-06)
 - [ ] **Phase 4: PDF Redesign** - Professional branded report with fpdf2
 - [ ] **Phase 5: Frontend UI** - Tailwind + Alpine.js polished interface
 
@@ -63,10 +63,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Add User model + migrate_schema() + user CRUD to database.py (AUTH-05)
-- [ ] 03-02-PLAN.md — Create backend/auth.py: PyJWT + pwdlib[bcrypt], get_current_user dependency with silent refresh (AUTH-01, AUTH-02, AUTH-03)
-- [ ] 03-03-PLAN.md — Wire auth into api.py: protect endpoints, add /api/auth/token + /api/admin/create-user, silent-refresh middleware (AUTH-01..AUTH-05)
-- [ ] 03-04-PLAN.md — Create frontend/login.html, update requirements.txt + render.yaml with auth env vars (AUTH-01, AUTH-02)
+- [x] 03-01-PLAN.md — Add User model + migrate_schema() + user CRUD to database.py (AUTH-05) (commit: cf9c904)
+- [x] 03-02-PLAN.md — Create backend/auth.py: PyJWT + pwdlib[bcrypt], get_current_user dependency with silent refresh (AUTH-01, AUTH-02, AUTH-03) (commit: 13752cf)
+- [x] 03-03-PLAN.md — Wire auth into api.py: protect endpoints, add /api/auth/token + /api/admin/create-user, silent-refresh middleware (AUTH-01..AUTH-05) (commit: d7463fe)
+- [x] 03-04-PLAN.md — Create frontend/login.html, update requirements.txt + render.yaml with auth env vars (AUTH-01, AUTH-02) (commit: a31645f)
 
 ### Phase 4: PDF Redesign
 **Goal**: Professional client-deliverable PDF report using fpdf2 with branding, embedded defect images, and severity colour-coding.
