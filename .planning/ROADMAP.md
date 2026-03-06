@@ -60,7 +60,13 @@ Plans:
   3. GET /api/jobs returns only jobs belonging to authenticated inspector
   4. POST /api/admin/create-user creates new inspector (protected by ADMIN_SECRET)
   5. Login page at /login redirects to dashboard on success
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Add User model + migrate_schema() + user CRUD to database.py (AUTH-05)
+- [ ] 03-02-PLAN.md — Create backend/auth.py: PyJWT + pwdlib[bcrypt], get_current_user dependency with silent refresh (AUTH-01, AUTH-02, AUTH-03)
+- [ ] 03-03-PLAN.md — Wire auth into api.py: protect endpoints, add /api/auth/token + /api/admin/create-user, silent-refresh middleware (AUTH-01..AUTH-05)
+- [ ] 03-04-PLAN.md — Create frontend/login.html, update requirements.txt + render.yaml with auth env vars (AUTH-01, AUTH-02)
 
 ### Phase 4: PDF Redesign
 **Goal**: Professional client-deliverable PDF report using fpdf2 with branding, embedded defect images, and severity colour-coding.
