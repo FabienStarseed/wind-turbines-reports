@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BDDA — Login</title>
+    <style>
+        body { font-family: sans-serif; max-width: 400px; margin: 100px auto; padding: 0 20px; }
+        h1 { font-size: 1.4rem; margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 0.25rem; font-size: 0.9rem; }
+        input { display: block; width: 100%; padding: 0.5rem; margin-bottom: 1rem;
+                box-sizing: border-box; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 0.6rem 1.5rem; font-size: 1rem; cursor: pointer; }
+        #error-msg { color: red; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h1>BDDA Inspector Login</h1>
+    <form id="login-form">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+        <button type="submit">Log in</button>
+        <p id="error-msg">Invalid credentials. Please try again.</p>
+    </form>
+
+    <script>
+        // If already logged in, redirect away immediately
+        (function() {
+            const token = localStorage.getItem('bdda_token');
+            if (token) {
+                const params = new URLSearchParams(window.location.search);
+                window.location.href = params.get('next') || '/';
+            }
+        })();
+
+        document.getElementById('login-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const errorEl = document.getElementById('error-msg');
+            errorEl.style.display = 'none';
+
+            const formData = new FormData(this);
+
+            let resp;
+            try {
+                // CRITICAL: use URLSearchParams — OAuth2PasswordRequestForm requires
+                // application/x-www-form-urlencoded, NOT application/json
+                resp = await fetch('/api/auth/token', {
+                    method: 'POST',
+                    body: new URLSearchParams(formData),
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                });
+            } catch (networkErr) {
+                errorEl.textContent = 'Network error — is the server running?';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            if (!resp.ok) {
+                errorEl.textContent = 'Invalid credentials. Please try again.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            const data = await resp.json();
+            localStorage.setItem('bdda_token', data.access_token);
+
+            // Check for token refresh header and update stored token if present
+            const newToken = resp.headers.get('X-New-Token');
+            if (newToken) {
+                localStorage.setItem('bdda_token', newToken);
+            }
+
+            // Redirect to ?next= param or default to /
+            const params = new URLSearchParams(window.location.search);
+            window.location.href = params.get('next') || '/';
+        });
+    </script>
+</body>
+</html>
