@@ -33,9 +33,9 @@
 
 ### Persistence — SQLite + Render Disk
 
-- [ ] **PERS-01**: Job state stored in SQLite (survives Render restarts) — database.py created (Plan 02-01); api.py migration pending (Plan 02-02)
-- [ ] **PERS-02**: Uploaded images and PDFs stored on Render Persistent Disk
-- [ ] **PERS-03**: Job history visible across sessions (no more lost jobs on restart)
+- [x] **PERS-01**: Job state stored in SQLite (survives Render restarts) — database.py (Plan 02-01) + api.py migration (Plan 02-02)
+- [x] **PERS-02**: Uploaded images and PDFs stored on Render Persistent Disk — JOBS_DIR at /data/jobs, images deleted post-triage (Plan 02-02)
+- [x] **PERS-03**: Job history visible across sessions (no more lost jobs on restart) — list_jobs_last_30_days() + lifespan recovery (Plan 02-02)
 - [x] **PERS-04**: render.yaml updated with persistent disk config — Plan 02-03
 
 ### Auth — Multi-Inspector Login

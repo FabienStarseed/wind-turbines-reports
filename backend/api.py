@@ -436,6 +436,7 @@ async def get_status(job_id: str):
         "generating_report": 85,
         "complete": 100,
         "error": -1,
+        "failed": -1,
         "cost_limit_exceeded": -1,
     }
 
@@ -450,8 +451,8 @@ async def get_status(job_id: str):
         "critical_findings": state.get("critical_findings"),
         "created_at": state.get("created_at"),
         "completed_at": state.get("completed_at"),
-        "error": state.get("stage_message") if stage == "error" else None,
-        "error_traceback": state.get("error_traceback") if stage == "error" else None,
+        "error": state.get("stage_message") if stage in ("error", "failed") else None,
+        "error_traceback": state.get("error_traceback") if stage in ("error", "failed") else None,
         "triage_cost_usd": state.get("triage_cost_usd"),
         "classify_cost_usd": state.get("classify_cost_usd"),
         "analyze_cost_usd": state.get("analyze_cost_usd"),
