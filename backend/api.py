@@ -19,16 +19,20 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, BackgroundTasks
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, update as sa_update
 
+from auth import get_current_user, create_token, verify_password, hash_password
 from database import (
     DATA_DIR, JOBS_DIR, init_db, get_db,
     get_job, save_new_job, update_job, set_stage,
-    list_jobs_last_30_days, Job
+    list_jobs_last_30_days, Job,
+    get_user_by_username, create_user, _seed_admin_user,
+    User,
 )
 
 # ─── PATHS ────────────────────────────────────────────────────────────────────
@@ -38,6 +42,10 @@ from database import (
 BASE_DIR = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 TEMPLATES_DIR = BASE_DIR / "templates"
+
+# ─── CONFIG ───────────────────────────────────────────────────────────────────
+
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 
 # ─── COST ESTIMATION ──────────────────────────────────────────────────────────
 
@@ -88,8 +96,15 @@ INTERRUPTED_STAGES = {"triaging", "classifying", "analyzing", "ingesting", "gene
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Startup — order matters:
+    # 1. init_db() creates tables (users + jobs) if they don't exist
+    # 2. migrate_schema() adds owner_id column to existing jobs table
+    # 3. _seed_admin_user() seeds admin user if users table is empty
+    # 4. _mark_interrupted_jobs_failed() recovers in-progress jobs from before restart
+    from database import migrate_schema
     init_db()
+    migrate_schema()
+    _seed_admin_user()
     _mark_interrupted_jobs_failed()
     yield
     # Shutdown — nothing needed
@@ -119,12 +134,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.middleware("http")
+async def attach_new_token_header(request: Request, call_next):
+    """Read request.state.new_token (set by get_current_user when <1h remaining)
+    and attach it as X-New-Token response header for the frontend to store.
+    """
+    response = await call_next(request)
+    new_token = getattr(request.state, "new_token", None)
+    if new_token:
+        response.headers["X-New-Token"] = new_token
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-New-Token"],  # required so browser JS can read this header
 )
 
 # ─── DISK SPACE GUARD ─────────────────────────────────────────────────────────
@@ -339,9 +368,63 @@ async def cost_estimate(image_count: int = Form(...)):
     return estimate_cost(image_count)
 
 
+@app.post("/api/auth/token")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Login endpoint. Accepts application/x-www-form-urlencoded (OAuth2 standard).
+
+    Returns {"access_token": JWT, "token_type": "bearer"} on success.
+    Returns 401 on wrong credentials.
+
+    Per CONTEXT.md Area D: frontend submits with URLSearchParams (not JSON) to satisfy
+    OAuth2PasswordRequestForm's x-www-form-urlencoded content type requirement.
+    """
+    user = get_user_by_username(form_data.username)
+    if not user or not verify_password(form_data.password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = create_token(user["username"], user["id"], user["is_admin"])
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/api/admin/create-user", status_code=201)
+async def admin_create_user(
+    username: str = Form(...),
+    password: str = Form(...),
+    is_admin: bool = Form(False),
+    x_admin_secret: Optional[str] = Header(None),
+):
+    """Create a new inspector account.
+
+    Protected by X-Admin-Secret header (not JWT). CONTEXT.md Area A: admin operates
+    via direct API call, not the inspector UI. Caller sends X-Admin-Secret: <value>.
+    FastAPI maps hyphenated header name to x_admin_secret (underscore, lowercase).
+
+    Returns 403 if ADMIN_SECRET env var is not set or header value doesn't match.
+    Returns 409 if username already exists.
+    Returns 201 + {"username": ..., "is_admin": ...} on success.
+    """
+    if not ADMIN_SECRET or x_admin_secret != ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        new_user = create_user(
+            username=username,
+            hashed_password=hash_password(password),
+            is_admin=is_admin,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return {"username": new_user["username"], "is_admin": new_user["is_admin"]}
+
+
 @app.post("/api/upload")
 async def upload_inspection(
     background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
     turbine_id: str = Form(...),
     site_name: str = Form(...),
     country: str = Form(...),
@@ -398,13 +481,16 @@ async def upload_inspection(
         "location_type": location_type if location_type in ("onshore", "offshore") else "onshore",
     }
 
-    save_new_job({
-        "job_id": job_id,
-        "stage": "queued",
-        "stage_message": "Job queued",
-        "turbine_meta": turbine_meta,
-        "image_count": image_count,
-    })
+    save_new_job(
+        {
+            "job_id": job_id,
+            "stage": "queued",
+            "stage_message": "Job queued",
+            "turbine_meta": turbine_meta,
+            "image_count": image_count,
+        },
+        owner_id=current_user["user_id"],
+    )
 
     # Compute cost estimate before starting
     cost_est = estimate_cost(min(image_count, 500))
@@ -421,10 +507,15 @@ async def upload_inspection(
 
 
 @app.get("/api/status/{job_id}")
-async def get_status(job_id: str):
+async def get_status(job_id: str, current_user: dict = Depends(get_current_user)):
     state = get_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    # Ownership enforcement (per CONTEXT.md Area B): admin exempt, inspector must own job
+    if not current_user["is_admin"]:
+        if state.get("owner_id") != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Access forbidden")
 
     # Map stage to progress %
     stage_progress = {
@@ -514,10 +605,15 @@ async def debug_ai():
 
 
 @app.get("/api/download/{job_id}")
-async def download_report(job_id: str):
+async def download_report(job_id: str, current_user: dict = Depends(get_current_user)):
     state = get_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    if not current_user["is_admin"]:
+        if state.get("owner_id") != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Access forbidden")
+
     if state.get("stage") != "complete":
         raise HTTPException(status_code=400, detail="Report not ready yet")
 
@@ -537,20 +633,29 @@ async def download_report(job_id: str):
 
 
 @app.get("/api/jobs")
-async def list_jobs():
-    """List jobs created in the last 30 days (per CONTEXT.md Area A — 30-day retention window)."""
-    return list_jobs_last_30_days()
+async def list_jobs(current_user: dict = Depends(get_current_user)):
+    """List jobs from the last 30 days. Admin sees all; inspector sees own jobs only.
+
+    Per CONTEXT.md Area B: existing jobs with NULL owner_id are visible to admin,
+    not to inspectors (SQLAlchemy WHERE owner_id == uuid naturally excludes NULLs).
+    """
+    if current_user["is_admin"]:
+        return list_jobs_last_30_days()          # no filter — admin sees all
+    return list_jobs_last_30_days(owner_id=current_user["user_id"])
 
 
 @app.delete("/api/jobs/{job_id}")
-async def delete_job(job_id: str):
-    """Delete job — removes SQLite row AND job directory (per CONTEXT.md Area A — manual delete)."""
-    job_dir = JOBS_DIR / job_id
-    if job_dir.exists():
-        shutil.rmtree(job_dir)
+async def delete_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete job — removes SQLite row AND job directory."""
     with get_db() as session:
         job = session.scalars(select(Job).where(Job.job_id == job_id)).first()
         if job:
+            if not current_user["is_admin"] and job.owner_id != current_user["user_id"]:
+                raise HTTPException(status_code=403, detail="Access forbidden")
+            # Remove files first, then DB row
+            job_dir = JOBS_DIR / job_id
+            if job_dir.exists():
+                shutil.rmtree(job_dir)
             session.delete(job)
             session.commit()
     return {"deleted": job_id}
@@ -565,6 +670,17 @@ async def health():
         "COST_LIMIT_USD": os.environ.get("COST_LIMIT_USD", "not set"),
     }
     return {"status": "ok", "api_keys": keys, "jobs_dir": str(JOBS_DIR), "data_dir": str(DATA_DIR)}
+
+
+# ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
+
+@app.get("/login")
+async def login_page():
+    """Serve the login HTML page."""
+    login_path = FRONTEND_DIR / "login.html"
+    if not login_path.exists():
+        raise HTTPException(status_code=404, detail="Login page not found — run Plan 04 first")
+    return HTMLResponse(content=login_path.read_text())
 
 
 # ─── STATIC FILES ────────────────────────────────────────────────────────────
