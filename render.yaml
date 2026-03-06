@@ -1,3 +1,12 @@
+# IMPORTANT: Persistent disk requires a paid web service instance.
+# Minimum: Starter tier ($7/month). Free tier has ephemeral filesystem — data
+# is wiped on every restart/redeploy. Upgrade the web service to Starter or
+# higher before deploying with this disk config.
+# Disk cost: $0.25/GB/month ($0.25/month for 1GB).
+# Total cost with Starter tier: ~$7.25/month.
+# Zero-downtime deploys are NOT available when a persistent disk is attached
+# (Render limitation). Brief downtime during redeploy is expected and acceptable.
+
 services:
   - type: web
     name: bdda
@@ -6,10 +15,12 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: cd backend && uvicorn api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
+    disk:
+      name: bdda-data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: GOOGLE_API_KEY
-        sync: false
-      - key: KIMI_API_KEY
+      - key: COST_LIMIT_USD
         sync: false
