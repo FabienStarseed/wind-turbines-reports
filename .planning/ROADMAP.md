@@ -77,7 +77,7 @@ Plans:
   2. DroneWind Asia logo appears in header on every page
   3. Each critical finding shows the defect image inline
   4. Defect severity rows use colour bands (Cat 0=green to Cat 4=red)
-  5. Page 1 is an executive summary (defect counts, highest severity, recommendation)
+  5. Executive summary section present with defect counts, critical count, and recommendation
   6. Report is visually client-presentable quality
 **Plans**: 3 plans
 
