@@ -1,8 +1,8 @@
 # BDDA Project State
 
 **Last updated:** 2026-03-08
-**Current phase:** Phase 4 — PDF Redesign (In Progress — Plan 2 of 3 complete)
-**Next action:** Phase 4 Plan 03 — PDF defect pages, blade map, full report wiring
+**Current phase:** Phase 4 — PDF Redesign (In Progress — Plan 1 of 3 complete)
+**Next action:** Phase 4 Plan 02 — Image pipeline fix (thumbnails before deletion)
 
 ---
 
@@ -13,7 +13,7 @@
 | 1 | AI Consolidation | Done |
 | 2 | Persistence | Done |
 | 3 | Auth | Done |
-| 4 | PDF Redesign | In Progress (2/3 plans done) |
+| 4 | PDF Redesign | In Progress (1/3 plans done) |
 | 5 | Frontend UI | Not started |
 
 ---
@@ -98,17 +98,18 @@ All 4 plans completed on 2026-03-05.
 
 | Plan | Name | Commit | Status |
 |------|------|--------|--------|
-| 04-01 | fpdf2 foundation — BDDAReport class, fonts, cover page | (04-01 commit) | Done |
-| 04-02 | Image pipeline fix — thumbnails before deletion, path rewriting | b79181e | Done |
+| 04-01 | fpdf2 foundation — BDDAReport class, fonts, cover page | 09648b4 | Done |
+| 04-02 | Image pipeline fix — thumbnails before deletion, path rewriting | pending | Not started |
 | 04-03 | Full report — defect pages, blade map, executive summary, TOC | pending | Not started |
 
 ### Key Decisions Made
 
-1. Thumbnail-before-delete pattern: 1568px JPEG thumbnails saved to job_dir/thumbnails/ before shutil.rmtree
-2. Thumbnail paths rewritten in flagged list before classify_batch call — classify.json records thumbnail paths
-3. JPEG quality=85 for thumbnails — same as classify.py load_and_resize_image(), consistent across pipeline
-4. Set-based deduplication (flagged_paths set) prevents saving same image twice
-5. PIL fallback: shutil.copy2 original if thumbnail creation fails (better than missing image in PDF)
+1. Inter TTF v3.19 from GitHub releases (Hinted for Windows/Desktop variant — best cross-platform TTF)
+2. Helvetica fallback in _register_fonts() guards against missing TTF on deployment
+3. SEVERITY_COLORS_IEC keyed 0-4 (RGB) added alongside legacy SEVERITY_COLORS (kept for severity_style field)
+4. iec_category key normalization: d.setdefault('category', d.get('iec_category', 0)) fixes real pipeline vs sample data mismatch
+5. Pre-calculated page numbers for TOC (deterministic with 1-defect-per-page layout) instead of insert_toc_placeholder()
+6. BRAND_NAVY=(15,50,90) / BRAND_STEEL=(0,100,160) / BRAND_LIGHT=(220,235,248) professional palette
 
 ---
 
@@ -117,8 +118,8 @@ All 4 plans completed on 2026-03-05.
 - **Deployed at:** https://wind-turbines-reports.onrender.com
 - **Repo:** FabienStarseed/wind-turbines-reports → main branch → Render autodeploy
 - **Branch:** claude/frosty-banach (push to main to deploy)
-- **Blocking issue:** None — Phase 4 Plan 03 is next (full PDF report generation)
-- **Phase 4 progress:** Plan 01 (fpdf2 foundation) + Plan 02 (thumbnail pipeline fix) done; Plan 03 (full report) remaining
+- **Blocking issue:** None — Phase 4 Plan 02 is next (image thumbnail pipeline fix)
+- **Phase 4 progress:** Plan 01 (fpdf2 foundation) done; Plans 02 (thumbnail fix) and 03 (full report) remaining
 - **Key decision:** All AI stages → `claude-opus-4-6` via `anthropic` SDK only
 - **Stack additions (Phase 2+):** SQLAlchemy, PyJWT, pwdlib[bcrypt]
 - **Stack removals done:** openai (Kimi), google-generativeai (Gemini) removed from requirements.txt
@@ -140,7 +141,7 @@ All 4 plans completed on 2026-03-05.
 | 03 | 02 | 2 min | 1 | 2 |
 | 03 | 03 | 3 min | 2 | 1 |
 | 03 | 04 | 10 min | 2 | 2 |
-| 04 | 02 | 5 min | 1 | 1 |
+| 04 | 01 | 5 min | 2 | 5 |
 
 ---
 

@@ -48,12 +48,12 @@
 
 ### PDF — Professional Branded Report
 
-- [ ] **PDF-01**: PDF uses fpdf2 (replaces xhtml2pdf — better layout control)
-- [ ] **PDF-02**: Report has DroneWind Asia branding (logo, colours, header/footer)
-- [~] **PDF-03**: Defect images embedded inline next to findings — pipeline fix done (Plan 04-02); PDF embedding in Plan 04-03
-- [ ] **PDF-04**: Severity colour-coding (Cat 0-4 colour bands in findings table)
-- [ ] **PDF-05**: Executive summary page (total defects, critical count, recommendation)
-- [ ] **PDF-06**: Per-blade defect map (blade diagram with annotated zones)
+- [x] **PDF-01**: PDF uses fpdf2 (replaces xhtml2pdf — better layout control) — Plan 04-01 (commit: 09648b4)
+- [x] **PDF-02**: Report has DroneWind Asia branding (logo, colours, header/footer) — Plan 04-01 (commit: 09648b4)
+- [ ] **PDF-03**: Defect images embedded inline next to findings — Plan 04-02 (pipeline fix) + Plan 04-03 (PDF embedding)
+- [ ] **PDF-04**: Severity colour-coding (Cat 0-4 colour bands in findings table) — Plan 04-03
+- [x] **PDF-05**: Executive summary page (total defects, critical count, recommendation) — Plan 04-01 (commit: 09648b4)
+- [ ] **PDF-06**: Per-blade defect map (blade diagram with annotated zones) — Plan 04-03
 
 ### Frontend — Polished UI
 
