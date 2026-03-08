@@ -543,6 +543,8 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
     pdf.cell(0, 6, condition_info.get("desc", ""), align="C")
 
     # ── CONFIDENTIAL footer ──
+    # Disable auto page break — we're writing near bottom of cover page
+    pdf.set_auto_page_break(auto=False)
     pdf.set_y(270)
     pdf.set_fill_color(*BRAND_NAVY)
     pdf.rect(0, 275, 210, 22, style="F")
@@ -560,6 +562,8 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
     pdf.set_text_color(180, 205, 230)
     company = turbine.get("company_name", "DroneWind Asia")
     pdf.cell(0, 5, f"{company} | wind-turbines-reports.onrender.com", align="C")
+    # Re-enable auto page break
+    pdf.set_auto_page_break(auto=True, margin=20)
 
 
 def _render_toc(pdf: BDDAReport, report_data: dict):
