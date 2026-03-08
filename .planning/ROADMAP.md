@@ -82,8 +82,8 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Foundation: Inter fonts, fpdf2 setup, BDDAReport class with cover/TOC/exec summary/inspection details (PDF-01, PDF-02, PDF-05)
-- [ ] 04-02-PLAN.md — Image pipeline fix: save thumbnail copies before deletion so defect images survive to PDF generation (PDF-03)
+- [x] 04-01-PLAN.md — Foundation: Inter fonts, fpdf2 setup, BDDAReport class with cover/TOC/exec summary/inspection details (PDF-01, PDF-02, PDF-05)
+- [x] 04-02-PLAN.md — Image pipeline fix: save thumbnail copies before deletion so defect images survive to PDF generation (PDF-03) (commit: b79181e)
 - [ ] 04-03-PLAN.md — Defect pages, action matrix, blade maps, severity colours, pipeline integration (PDF-03, PDF-04, PDF-06)
 
 ### Phase 5: Frontend UI
