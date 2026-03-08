@@ -39,10 +39,9 @@ from database import (
 # ─── PATHS ────────────────────────────────────────────────────────────────────
 
 # DATA_DIR and JOBS_DIR imported from database.py
-# FRONTEND_DIR and TEMPLATES_DIR remain relative to this file
+# FRONTEND_DIR is relative to this file
 BASE_DIR = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
-TEMPLATES_DIR = BASE_DIR / "templates"
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
@@ -183,7 +182,6 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         from triage import triage_batch, save_triage_results
         from classify import classify_batch, save_classify_results, load_critical_findings
         from analyze import analyze_critical_defects, save_analysis_results
-        from report import build_report, make_sample_turbine_meta
 
         images_dir = job_dir / "images"
 
@@ -324,20 +322,18 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         set_stage(job_id, "generating_report", "Building PDF report...")
 
         # ── Stage 5: Report ──
-        triage_json = job_dir / "triage.json" if (job_dir / "triage.json").exists() else None
-        pdf_path = job_dir / f"report_{turbine_meta['turbine_id']}.pdf"
+        from report import build_report_data, generate_pdf_fpdf2, load_classify_json, load_analyze_json, load_triage_json
 
-        from report import build_report
-        build_report(
-            turbine_meta=turbine_meta,
-            classify_json_path=classify_path,
-            output_pdf_path=pdf_path,
-            triage_json_path=triage_json,
-            analyze_json_path=analyze_path,
-            templates_dir=TEMPLATES_DIR,
-            save_html=True,
-            verbose=False,
-        )
+        classify_data = load_classify_json(classify_path)
+        analyze_data = load_analyze_json(analyze_path) if analyze_path.exists() else []
+        triage_data = None
+        triage_path_json = job_dir / "triage.json"
+        if triage_path_json.exists():
+            triage_data = load_triage_json(triage_path_json)
+
+        report_data = build_report_data(turbine_meta, triage_data, classify_data, analyze_data)
+        pdf_path = job_dir / f"report_{turbine_meta['turbine_id']}.pdf"
+        generate_pdf_fpdf2(report_data, pdf_path)
 
         update_job(
             job_id,
