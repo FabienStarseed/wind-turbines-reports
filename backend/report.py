@@ -1,6 +1,6 @@
 """
 report.py — Stage 4: Professional PDF report generation using fpdf2
-Assembles triage + classify + analyze JSON data into a DroneWind Asia branded PDF.
+Assembles triage + classify + analyze JSON data into an AWID branded PDF.
 
 Pipeline:
   triage JSON + classify JSON + analyze JSON → BDDAReport (fpdf2) → PDF
@@ -349,7 +349,7 @@ def build_report_data(
 # ─── FPDF2 PDF GENERATION ────────────────────────────────────────────────────
 
 class BDDAReport(FPDF):
-    """DroneWind Asia inspection report — fpdf2 subclass with branded header/footer."""
+    """AWID inspection report — fpdf2 subclass with branded header/footer."""
 
     def __init__(self, report_data: dict):
         super().__init__(orientation="P", unit="mm", format="A4")
@@ -385,7 +385,7 @@ class BDDAReport(FPDF):
         self.set_y(8)
         self._font("B", 9)
         self.set_text_color(*BRAND_NAVY)
-        self.cell(95, 6, "DroneWind Asia", align="L")
+        self.cell(95, 6, "AWID", align="L")
         self._font("", 8)
         self.set_text_color(*BRAND_GREY)
         self.cell(0, 6, self.report_ref, align="R")
@@ -401,7 +401,7 @@ class BDDAReport(FPDF):
         self.set_y(-12)
         self._font("", 7)
         self.set_text_color(160, 160, 160)
-        self.cell(0, 6, f"Page {self.page_no()} | Confidential — DroneWind Asia Inspection Report", align="C")
+        self.cell(0, 6, f"Page {self.page_no()} | Confidential — AWID Inspection Report", align="C")
 
 
 # ─── PAGE RENDERERS ───────────────────────────────────────────────────────────
@@ -423,7 +423,7 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
         pdf.set_font("Inter", "B", 22)
     else:
         pdf.set_font("Helvetica", "B", 22)
-    pdf.cell(0, 12, "DroneWind Asia", align="L")
+    pdf.cell(0, 12, "AWID", align="L")
 
     # ── Tagline ──
     pdf.set_y(29)
@@ -433,7 +433,7 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
     else:
         pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(180, 205, 230)
-    pdf.cell(0, 7, "Precision Drone Inspection Services", align="L")
+    pdf.cell(0, 7, "APAC Wind Inspections Drones", align="L")
 
     # ── Light band below navy ──
     pdf.set_fill_color(*BRAND_LIGHT)
@@ -560,7 +560,7 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
     else:
         pdf.set_font("Helvetica", "", 7)
     pdf.set_text_color(180, 205, 230)
-    company = turbine.get("company_name", "DroneWind Asia")
+    company = turbine.get("company_name", "AWID - APAC Wind Inspections Drones")
     pdf.cell(0, 5, f"{company} | wind-turbines-reports.onrender.com", align="C")
     # Re-enable auto page break
     pdf.set_auto_page_break(auto=True, margin=20)
@@ -1517,7 +1517,7 @@ def _render_inspection_details(pdf: BDDAReport, report_data: dict):
         "This report was generated using AI-assisted defect detection technology. "
         "All findings have been produced by automated image analysis and should be reviewed "
         "by a qualified wind turbine inspector before maintenance or repair decisions are made. "
-        "DroneWind Asia accepts no liability for decisions made solely on the basis of this report "
+        "AWID - APAC Wind Inspections Drones accepts no liability for decisions made solely on the basis of this report "
         "without independent engineering verification."
     )
     if pdf._fonts_registered:
@@ -1652,7 +1652,7 @@ def make_sample_turbine_meta(turbine_id: str = "JAP19") -> Dict:
         "gps_lat": 44.3123,
         "gps_lon": 141.6789,
         "notes": "All three blades inspected. Blade B tip slightly restricted by wind gusts at time of inspection.",
-        "company_name": "DroneWind Asia",
+        "company_name": "AWID - APAC Wind Inspections Drones",
         "report_ref": None,  # auto-generated
     }
 

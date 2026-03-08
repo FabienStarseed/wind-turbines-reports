@@ -499,7 +499,7 @@ async def upload_inspection(
         "drone_model": drone_model or "DJI Matrice 300 RTK",
         "camera": "DJI Zenmuse P1 45MP",
         "notes": notes or "",
-        "company_name": os.environ.get("COMPANY_NAME", "DroneWind Asia"),
+        "company_name": os.environ.get("COMPANY_NAME", "AWID - APAC Wind Inspections Drones"),
         "location_type": location_type if location_type in ("onshore", "offshore") else "onshore",
     }
 
