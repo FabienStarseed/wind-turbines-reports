@@ -905,6 +905,450 @@ def _render_executive_summary(pdf: BDDAReport, report_data: dict):
     pdf.multi_cell(reco_w - 5, 6, reco_text)
 
 
+def _embed_defect_image(pdf: BDDAReport, image_path: str, x: float, y: float,
+                        w: float = 80, h: float = 80):
+    """Embed defect thumbnail at (x, y); draw grey placeholder if file missing or unreadable."""
+    path = Path(image_path) if image_path else None
+    if not path or not path.exists():
+        # Grey placeholder
+        pdf.set_fill_color(220, 220, 220)
+        pdf.rect(x, y, w, h, style="F")
+        pdf.set_draw_color(180, 180, 180)
+        pdf.rect(x, y, w, h, style="D")
+        pdf.set_xy(x, y + h / 2 - 4)
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "I", 7)
+        else:
+            pdf.set_font("Helvetica", "I", 7)
+        pdf.set_text_color(140, 140, 140)
+        pdf.cell(w, 6, "Image not available", align="C")
+        return
+
+    try:
+        if HAS_PILLOW:
+            with PILImage.open(path) as img:
+                img = img.convert("RGB")
+                img.thumbnail((472, 472), PILImage.LANCZOS)  # 80mm @ 150dpi ≈ 472px
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=82)
+                buf.seek(0)
+            pdf.image(buf, x=x, y=y, w=w, h=h, keep_aspect_ratio=True)
+        else:
+            pdf.image(str(path), x=x, y=y, w=w, h=h, keep_aspect_ratio=True)
+    except Exception:
+        # Fallback placeholder on any image error
+        pdf.set_fill_color(220, 220, 220)
+        pdf.rect(x, y, w, h, style="F")
+        pdf.set_xy(x, y + h / 2 - 4)
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "I", 7)
+        else:
+            pdf.set_font("Helvetica", "I", 7)
+        pdf.set_text_color(140, 140, 140)
+        pdf.cell(w, 6, "Image error", align="C")
+
+
+def _render_defect_page(pdf: BDDAReport, defect: dict, defect_index: int, total_defects: int):
+    """Render one defect per page: severity band, 80x80mm image, metadata, deep analysis."""
+    cat = defect.get("category", 0)
+    severity_info = SEVERITY_COLORS_IEC.get(cat, SEVERITY_COLORS_IEC[0])
+
+    # ── Page title ──
+    if pdf._fonts_registered:
+        pdf.set_font("Inter", "B", 14)
+    else:
+        pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(*BRAND_NAVY)
+    pdf.cell(0, 10, f"Defect Finding {defect_index}/{total_defects}", new_x="LMARGIN", new_y="NEXT")
+
+    # ── Severity colour band (full width) ──
+    band_y = pdf.get_y()
+    pdf.set_fill_color(*severity_info["rgb"])
+    pdf.rect(pdf.l_margin, band_y, pdf.w - pdf.l_margin - pdf.r_margin, 10, style="F")
+    pdf.set_xy(pdf.l_margin, band_y + 1)
+    if pdf._fonts_registered:
+        pdf.set_font("Inter", "B", 10)
+    else:
+        pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(*severity_info["text_rgb"])
+    pdf.cell(0, 8, severity_info["label"], align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    # ── Two-column area: image left, metadata right ──
+    col_start_y = pdf.get_y()
+    left_x = pdf.l_margin
+    right_x = pdf.l_margin + 88  # 80mm image + 8mm gap
+    meta_width = pdf.w - right_x - pdf.r_margin
+
+    # Left column: 80x80mm image
+    _embed_defect_image(pdf, defect.get("image_path", ""), left_x, col_start_y, w=80, h=80)
+
+    # Right column: metadata fields
+    def _meta_row(label: str, value: str):
+        pdf.set_x(right_x)
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "B", 7)
+        else:
+            pdf.set_font("Helvetica", "B", 7)
+        pdf.set_text_color(*BRAND_GREY)
+        pdf.cell(meta_width * 0.40, 5, label.upper(), align="L")
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "", 8)
+        else:
+            pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(40, 40, 40)
+        val_str = str(value) if value is not None else "—"
+        pdf.cell(meta_width * 0.60, 5, val_str[:50], align="L", new_x="LMARGIN", new_y="NEXT")
+
+    # Position at right column start
+    pdf.set_xy(right_x, col_start_y)
+
+    defect_name = defect.get("defect_name", "Unknown")
+    if pdf._fonts_registered:
+        pdf.set_font("Inter", "B", 10)
+    else:
+        pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(*BRAND_NAVY)
+    # Multi-cell for long names
+    pdf.set_x(right_x)
+    pdf.multi_cell(meta_width, 6, defect_name, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    confidence = defect.get("confidence", 0.0)
+    conf_pct = f"{confidence:.0%}"
+    conf_label = _confidence_label(confidence)
+    ndt = "Yes" if defect.get("ndt_recommended") else "No"
+
+    meta_fields = [
+        ("Defect ID", defect.get("defect_id", "—")),
+        ("IEC Category", f"Cat {cat} — {defect.get('urgency', '')}"),
+        ("Zone", defect.get("zone", "—")),
+        ("Position", defect.get("position", "—")),
+        ("Size Estimate", defect.get("size_estimate", "—")),
+        ("Confidence", f"{conf_pct} ({conf_label})"),
+        ("NDT Recommended", ndt),
+    ]
+
+    for label, value in meta_fields:
+        _meta_row(label, value)
+
+    # After image (below 80mm image + gap)
+    pdf.set_y(col_start_y + 84)
+
+    # ── Visual description ──
+    visual_desc = defect.get("visual_description", "")
+    if visual_desc:
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "B", 9)
+        else:
+            pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(*BRAND_NAVY)
+        pdf.cell(0, 7, "Visual Description", new_x="LMARGIN", new_y="NEXT")
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "I", 8)
+        else:
+            pdf.set_font("Helvetica", "I", 8)
+        pdf.set_text_color(60, 60, 60)
+        content_width = pdf.w - pdf.l_margin - pdf.r_margin
+        pdf.multi_cell(content_width, 5, visual_desc)
+        pdf.ln(4)
+
+    # ── Deep analysis (if available) ──
+    analysis = defect.get("analysis")
+    if analysis:
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "B", 10)
+        else:
+            pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*BRAND_NAVY)
+        pdf.cell(0, 8, "Deep Analysis", new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_draw_color(*BRAND_LIGHT)
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+        pdf.ln(3)
+
+        content_width = pdf.w - pdf.l_margin - pdf.r_margin
+
+        def _analysis_row(label: str, value: str):
+            if not value:
+                return
+            if pdf._fonts_registered:
+                pdf.set_font("Inter", "B", 8)
+            else:
+                pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(*BRAND_GREY)
+            pdf.cell(0, 5, label.upper(), new_x="LMARGIN", new_y="NEXT")
+            if pdf._fonts_registered:
+                pdf.set_font("Inter", "", 8)
+            else:
+                pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(50, 50, 50)
+            pdf.multi_cell(content_width, 5, str(value))
+            pdf.ln(2)
+
+        _analysis_row("Root Cause", analysis.get("root_cause", ""))
+        _analysis_row("Recommended Action", analysis.get("recommended_action", ""))
+        _analysis_row("Repair Timeframe", analysis.get("repair_timeframe", ""))
+        _analysis_row("Estimated Cost", analysis.get("estimated_cost_usd", ""))
+
+        failure_risk = analysis.get("failure_risk", {})
+        if failure_risk:
+            safety_risk = failure_risk.get("safety_risk", "")
+            if safety_risk:
+                _analysis_row("Safety Risk Level", safety_risk)
+
+        if analysis.get("engineer_review_required"):
+            pdf.set_fill_color(239, 68, 68)
+            pdf.set_text_color(255, 255, 255)
+            if pdf._fonts_registered:
+                pdf.set_font("Inter", "B", 8)
+            else:
+                pdf.set_font("Helvetica", "B", 8)
+            pdf.cell(0, 7, "  ENGINEER REVIEW REQUIRED", fill=True, new_x="LMARGIN", new_y="NEXT")
+
+
+def _render_action_matrix(pdf: BDDAReport, report_data: dict):
+    """Action matrix page: priority-sorted table colour-coded by severity."""
+    pdf.add_page()
+
+    # ── Section heading ──
+    if pdf._fonts_registered:
+        pdf.set_font("Inter", "B", 18)
+    else:
+        pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(*BRAND_NAVY)
+    pdf.cell(0, 12, "Action Matrix", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(*BRAND_STEEL)
+    pdf.set_line_width(0.4)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+    pdf.set_line_width(0.2)
+    pdf.ln(6)
+
+    action_matrix = report_data.get("action_matrix", [])
+
+    if not action_matrix:
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "I", 11)
+        else:
+            pdf.set_font("Helvetica", "I", 11)
+        pdf.set_text_color(*BRAND_GREY)
+        pdf.cell(0, 10, "No defects found — turbine in good condition.", align="C", new_x="LMARGIN", new_y="NEXT")
+        return
+
+    content_width = pdf.w - pdf.l_margin - pdf.r_margin
+    row_h = 7
+
+    # Column definitions: (label, relative_width)
+    cols = [
+        ("Priority", 0.08),
+        ("Blade",    0.07),
+        ("Defect ID", 0.10),
+        ("Defect Name", 0.28),
+        ("Cat", 0.06),
+        ("Zone", 0.10),
+        ("Timeframe", 0.13),
+        ("Action", 0.18),
+    ]
+    col_widths = [content_width * w for _, w in cols]
+
+    def _draw_header():
+        pdf.set_fill_color(*BRAND_NAVY)
+        pdf.set_text_color(255, 255, 255)
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "B", 8)
+        else:
+            pdf.set_font("Helvetica", "B", 8)
+        for (label, _), w in zip(cols, col_widths):
+            pdf.cell(w, row_h, label, border=0, fill=True, align="C")
+        pdf.ln(row_h)
+
+    _draw_header()
+
+    for item in action_matrix:
+        if pdf.will_page_break(row_h):
+            pdf.add_page()
+            _draw_header()
+
+        cat = item.get("category", 0)
+        info = SEVERITY_COLORS_IEC.get(cat, SEVERITY_COLORS_IEC[0])
+
+        pdf.set_fill_color(*info["rgb"])
+        pdf.set_text_color(*info["text_rgb"])
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "B", 7)
+        else:
+            pdf.set_font("Helvetica", "B", 7)
+
+        values = [
+            item.get("priority", ""),
+            item.get("blade", ""),
+            item.get("defect_id", ""),
+            item.get("defect_name", "")[:40],
+            f"Cat {cat}",
+            item.get("zone", ""),
+            item.get("timeframe", ""),
+            item.get("action", "")[:35],
+        ]
+
+        for val, w in zip(values, col_widths):
+            pdf.cell(w, row_h, str(val), border="B", fill=True, align="L")
+        pdf.ln(row_h)
+
+
+def _render_blade_map(pdf: BDDAReport, blade_label: str, blade_defects: list):
+    """Per-blade defect map: zone grid schematic with severity-coloured markers."""
+    # ── Section heading ──
+    if pdf._fonts_registered:
+        pdf.set_font("Inter", "B", 16)
+    else:
+        pdf.set_font("Helvetica", "B", 16)
+    pdf.set_text_color(*BRAND_NAVY)
+    pdf.cell(0, 10, f"Blade {blade_label} — Defect Map", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(*BRAND_STEEL)
+    pdf.set_line_width(0.4)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+    pdf.set_line_width(0.2)
+    pdf.ln(6)
+
+    zones = ["LE", "TE", "PS", "SS"]
+    positions = ["Root", "Mid", "Tip"]
+    cell_w, cell_h = 35, 18
+    start_x = pdf.l_margin + 25  # leave room for zone labels on left
+    start_y = pdf.get_y() + 10   # leave room for position labels on top
+
+    # ── Position labels across top ──
+    if pdf._fonts_registered:
+        pdf.set_font("Inter", "B", 8)
+    else:
+        pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(*BRAND_NAVY)
+    for col, pos in enumerate(positions):
+        pdf.set_xy(start_x + col * cell_w, start_y - 8)
+        pdf.cell(cell_w, 7, pos, align="C")
+
+    # ── Zone grid ──
+    for row, zone in enumerate(zones):
+        # Zone label on left margin
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "B", 8)
+        else:
+            pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(*BRAND_NAVY)
+        pdf.set_xy(pdf.l_margin, start_y + row * cell_h + cell_h / 2 - 3)
+        pdf.cell(22, 6, zone, align="R")
+
+        for col, pos in enumerate(positions):
+            x = start_x + col * cell_w
+            y = start_y + row * cell_h
+
+            worst_cat = _worst_cat_in_zone(blade_defects, zone, pos)
+            rgb = ZONE_COLORS_IEC.get(worst_cat, (230, 230, 230))
+
+            # Cell background
+            pdf.set_fill_color(*rgb)
+            pdf.set_draw_color(180, 180, 180)
+            pdf.rect(x, y, cell_w, cell_h, style="FD")
+
+            # Zone label inside cell (small)
+            if pdf._fonts_registered:
+                pdf.set_font("Inter", "", 6)
+            else:
+                pdf.set_font("Helvetica", "", 6)
+            pdf.set_text_color(50, 50, 50)
+            pdf.set_xy(x, y + 2)
+            pdf.cell(cell_w, 5, zone, align="C")
+
+            # Defect count circle — count defects in this zone+position
+            zone_count = sum(
+                1 for d in blade_defects
+                if d.get("zone") == zone and d.get("position") == pos
+            )
+            if zone_count > 0:
+                # Draw circle at cell center
+                cx = x + cell_w / 2
+                cy = y + cell_h / 2 + 2
+                pdf.set_fill_color(255, 255, 255)
+                pdf.set_draw_color(100, 100, 100)
+                pdf.circle(x=cx, y=cy, radius=4, style="FD")  # x,y = CENTER coords
+                # Count text in circle
+                if pdf._fonts_registered:
+                    pdf.set_font("Inter", "B", 7)
+                else:
+                    pdf.set_font("Helvetica", "B", 7)
+                pdf.set_text_color(50, 50, 50)
+                pdf.set_xy(cx - 4, cy - 3.5)
+                pdf.cell(8, 7, str(zone_count), align="C")
+
+    # ── Severity legend ──
+    legend_y = start_y + len(zones) * cell_h + 8
+
+    if pdf._fonts_registered:
+        pdf.set_font("Inter", "B", 9)
+    else:
+        pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(*BRAND_NAVY)
+    pdf.set_xy(pdf.l_margin, legend_y)
+    pdf.cell(0, 7, "Severity Legend", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    legend_items = [(-1, (230, 230, 230), "No defects")] + [
+        (cat, ZONE_COLORS_IEC[cat], SEVERITY_COLORS_IEC[cat]["label"])
+        for cat in range(0, 5)
+    ]
+
+    swatch_w, swatch_h = 20, 6
+    gap = 4
+    legend_x = pdf.l_margin
+    legend_row_y = pdf.get_y()
+
+    for i, (cat, rgb, label) in enumerate(legend_items):
+        x = legend_x + i * (swatch_w + 25 + gap)
+        # Wrap to next line if needed
+        if x + swatch_w + 25 > pdf.w - pdf.r_margin:
+            x = legend_x
+            legend_row_y += 10
+        pdf.set_fill_color(*rgb)
+        pdf.set_draw_color(180, 180, 180)
+        pdf.rect(x, legend_row_y, swatch_w, swatch_h, style="FD")
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "", 7)
+        else:
+            pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(50, 50, 50)
+        pdf.set_xy(x + swatch_w + 2, legend_row_y)
+        pdf.cell(25, swatch_h, label, align="L")
+
+    # ── Defect list for this blade ──
+    if blade_defects:
+        pdf.set_y(legend_row_y + swatch_h + 8)
+        if pdf._fonts_registered:
+            pdf.set_font("Inter", "B", 9)
+        else:
+            pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(*BRAND_NAVY)
+        pdf.cell(0, 7, f"Blade {blade_label} Defects ({len(blade_defects)} total)", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+        for defect in blade_defects:
+            if pdf.will_page_break(6):
+                break  # stop listing if out of space — full details in defect pages
+            cat = defect.get("category", 0)
+            info = SEVERITY_COLORS_IEC.get(cat, SEVERITY_COLORS_IEC[0])
+            # Severity indicator dot
+            pdf.set_fill_color(*info["rgb"])
+            pdf.rect(pdf.l_margin, pdf.get_y() + 1, 3, 4, style="F")
+            pdf.set_x(pdf.l_margin + 5)
+            if pdf._fonts_registered:
+                pdf.set_font("Inter", "", 8)
+            else:
+                pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(50, 50, 50)
+            zone = defect.get("zone", "")
+            pos = defect.get("position", "")
+            name = defect.get("defect_name", "Unknown")[:60]
+            pdf.cell(0, 6, f"[{zone}/{pos}] {name}", new_x="LMARGIN", new_y="NEXT")
+
+
 def _render_inspection_details(pdf: BDDAReport, report_data: dict):
     """Final page: turbine specs, drone info, weather, GPS, legal disclaimer."""
     pdf.add_page()
@@ -1106,8 +1550,26 @@ def generate_pdf_fpdf2(report_data: dict, output_path: Path) -> Path:
     _render_toc(pdf, report_data)
     _render_executive_summary(pdf, report_data)
 
-    # ── Defect pages, Action Matrix, Blade Maps ── (added by Plan 03)
-    # Placeholder: will be implemented in Plan 03
+    # ── Defect pages: 1 page per defect, grouped by blade ──
+    total_defects = report_data.get("total_defects", 0)
+    defect_index = 1
+    blades_sorted = report_data.get("blades_sorted", [])
+    blade_findings = report_data.get("blade_findings", {})
+
+    for blade in blades_sorted:
+        blade_defects = blade_findings.get(blade, [])
+        for defect in blade_defects:
+            pdf.add_page()
+            _render_defect_page(pdf, defect, defect_index, total_defects)
+            defect_index += 1
+
+    # ── Action matrix ──
+    _render_action_matrix(pdf, report_data)
+
+    # ── Per-blade defect maps ──
+    for blade in blades_sorted:
+        pdf.add_page()
+        _render_blade_map(pdf, blade, blade_findings.get(blade, []))
 
     _render_inspection_details(pdf, report_data)
 
