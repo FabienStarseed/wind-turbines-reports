@@ -1,8 +1,8 @@
 # BDDA Project State
 
 **Last updated:** 2026-03-08
-**Current phase:** Phase 4 — PDF Redesign (In Progress — Plan 1 of 3 complete)
-**Next action:** Phase 4 Plan 02 — Image pipeline fix (thumbnails before deletion)
+**Current phase:** Phase 4 — PDF Redesign (In Progress — Plans 1, 2, 3 tasks complete; awaiting Task 3 visual verification)
+**Next action:** Phase 4 Plan 03 Task 3 — User visual approval of test_report.pdf
 
 ---
 
@@ -99,8 +99,8 @@ All 4 plans completed on 2026-03-05.
 | Plan | Name | Commit | Status |
 |------|------|--------|--------|
 | 04-01 | fpdf2 foundation — BDDAReport class, fonts, cover page | 09648b4 | Done |
-| 04-02 | Image pipeline fix — thumbnails before deletion, path rewriting | pending | Not started |
-| 04-03 | Full report — defect pages, blade map, executive summary, TOC | pending | Not started |
+| 04-02 | Image pipeline fix — thumbnails before deletion, path rewriting | 78a9c4e | Done |
+| 04-03 | Full report — defect pages, blade map, action matrix, wiring | 945df1d | Checkpoint (awaiting visual verify) |
 
 ### Key Decisions Made
 
@@ -110,6 +110,10 @@ All 4 plans completed on 2026-03-05.
 4. iec_category key normalization: d.setdefault('category', d.get('iec_category', 0)) fixes real pipeline vs sample data mismatch
 5. Pre-calculated page numbers for TOC (deterministic with 1-defect-per-page layout) instead of insert_toc_placeholder()
 6. BRAND_NAVY=(15,50,90) / BRAND_STEEL=(0,100,160) / BRAND_LIGHT=(220,235,248) professional palette
+7. 1-defect-per-page spacious layout with severity colour band header, 80x80mm left-column image, metadata right column
+8. Blade map zone grid: 4 zones (LE/TE/PS/SS) x 3 positions (Root/Mid/Tip) = 12 cells coloured by worst defect severity
+9. circle(x=cx, y=cy, radius) uses CENTER coordinates in fpdf2 — no offset needed
+10. api.py pipeline calls generate_pdf_fpdf2() via build_report_data() + load_*_json(); templates/ directory deleted
 
 ---
 
@@ -144,6 +148,7 @@ All 4 plans completed on 2026-03-05.
 | 04 | 01 | 5 min | 2 | 5 |
 
 ---
+| Phase 04 P03 | 25 min | 2 tasks | 4 files |
 
 ## Planning Artifacts
 
