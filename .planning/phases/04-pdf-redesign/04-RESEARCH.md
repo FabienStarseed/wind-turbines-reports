@@ -1,8 +1,8 @@
 # Phase 4: PDF Redesign - Research
 
-**Researched:** 2026-03-07
+**Researched:** 2026-03-08 (forced re-research, overwrites 2026-03-07 version)
 **Domain:** fpdf2 PDF generation, font embedding, image embedding, programmatic drawing
-**Confidence:** HIGH (fpdf2 API verified from official docs + source; data structures verified from codebase reading)
+**Confidence:** HIGH (fpdf2 API re-verified from official docs; data structures re-verified from codebase reading; image deletion path confirmed)
 
 ---
 
@@ -75,25 +75,27 @@ None listed.
 
 | ID | Description | Research Support |
 |----|-------------|-----------------|
-| PDF-01 | PDF uses fpdf2 (replaces xhtml2pdf) | fpdf2 2.8.4 API verified; drop-in replacement for report.py's generate_pdf(); `build_report_data()` stays untouched |
-| PDF-02 | DroneWind Asia branding (logo, colours, header/footer) | fpdf2 `header()`/`footer()` override pattern; TTF font bundling strategy confirmed for Render Linux |
-| PDF-03 | Defect images embedded inline next to findings | fpdf2 `image()` accepts PIL Image objects and file paths; BytesIO confirmed in source; Pillow already in requirements.txt |
-| PDF-04 | Severity colour-coding (Cat 0-4 colour bands) | fpdf2 `set_fill_color(r,g,b)` + `cell(fill=True)` or `table()` with FontFace; existing SEVERITY_COLORS hex values convert to RGB |
+| PDF-01 | PDF uses fpdf2 (replaces xhtml2pdf) | fpdf2 2.8.7 (latest) confirmed on PyPI; drop-in replacement for report.py's generate_pdf(); `build_report_data()` stays untouched |
+| PDF-02 | DroneWind Asia branding (logo, colours, header/footer) | fpdf2 `header()`/`footer()` override pattern confirmed; TTF font bundling strategy confirmed for Render Linux |
+| PDF-03 | Defect images embedded inline next to findings | **Image deletion confirmed** — originals in `job_dir/images/` are deleted post-triage; Plan 02 thumbnail fix required. fpdf2 `image()` accepts PIL Image objects, file paths, and BytesIO; Pillow already in requirements.txt |
+| PDF-04 | Severity colour-coding (Cat 0-4 colour bands) | fpdf2 `set_fill_color(r,g,b)` + `cell(fill=True)` confirmed; SEVERITY_COLORS_IEC keyed 0-4 replaces old 1-5 mapping |
 | PDF-05 | Executive summary page (defect counts, highest severity, recommendation) | `build_report_data()` already produces all needed fields; `condition_info`, `critical_count`, `defects_by_cat` map directly |
-| PDF-06 | Per-blade defect map (blade diagram with annotated zones) | fpdf2 `rect()`, `line()`, `circle()`, `polygon()` with `style="FD"` for programmatic schematic; zone coords pre-calculable |
+| PDF-06 | Per-blade defect map (blade diagram with annotated zones) | fpdf2 `rect()`, `line()`, `circle(x, y, radius)` confirmed; circle() uses center coords (not top-left); zone grid 4×3 approach works |
 </phase_requirements>
 
 ---
 
 ## Summary
 
-Phase 4 replaces the xhtml2pdf/WeasyPrint/Jinja2 HTML pipeline with a pure fpdf2 direct PDF construction approach. The scope is confined to `backend/report.py`: the `render_html()` and `generate_pdf()` functions are replaced by a new fpdf2-based generator. The `build_report_data()` function and all data assembly logic is preserved unchanged — it already produces all fields the PDF needs.
+Phase 4 replaces the xhtml2pdf/WeasyPrint/Jinja2 HTML pipeline with a pure fpdf2 direct PDF construction approach. The scope is confined to `backend/report.py` (major rewrite) and `backend/api.py` (thumbnail fix + pipeline wiring). The `build_report_data()` function and all data assembly logic is preserved unchanged — it already produces all fields the PDF needs.
 
-fpdf2 2.8.4 is the current stable release (confirmed on PyPI). The API is well-suited to this use case: header/footer overrides, TTF font embedding, image placement by coordinates, table context managers with colored rows, and primitive shape drawing for the blade map. All required capabilities are verified from official docs.
+**CONFIRMED this re-research:** fpdf2 is now at 2.8.7 on PyPI (was 2.8.4 in previous research). The API is stable between minor versions. `insert_toc_placeholder()` with a `TableOfContents` render callback is confirmed available. `circle(x, y, radius)` uses center coordinates — the previous research had a bug showing `x=cx - 3, y=cy - 3` which would misplace markers; correct call is `circle(x=cx, y=cy, radius=3)`.
 
-The key implementation risks are: (1) image availability at PDF generation time (original DJI files deleted post-triage — must use tiles/thumbnails stored in job dir), (2) font bundling for Render's Linux environment (no system fonts — TTF must ship with repo), and (3) the blade map diagram which requires coordinate math for zone layout. One defect per page with 80×80mm thumbnails is generous but straightforward with fpdf2's coordinate API.
+**CONFIRMED image deletion path:** `api.py` line 241-243 does `shutil.rmtree(job_dir / "images")` after triage. All classify image_path fields point into `job_dir/images/` which is deleted. Plan 02 (thumbnail copy before deletion) is required for PDF-03. Without it, every defect image in the PDF is a grey placeholder.
 
-**Primary recommendation:** Rewrite `report.py` in a single plan — replace the two HTML functions with an `FPDF` subclass that overrides `header()`/`footer()`, add a `generate_pdf_fpdf2(report_data, output_path)` function, and remove jinja2/xhtml2pdf/weasyprint from requirements.txt.
+The 3-plan structure (01: foundation, 02: image pipeline fix, 03: defect pages + wiring) is correct and complete. Plans already exist — this re-research confirms they are well-founded with one correction needed (circle coordinates).
+
+**Primary recommendation:** Execute the 3 existing plans in order. Fix the `circle()` coordinate bug in Plan 03 before execution.
 
 ---
 
@@ -102,18 +104,18 @@ The key implementation risks are: (1) image availability at PDF generation time 
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| fpdf2 | 2.8.4 | Direct PDF construction — cells, images, shapes, tables | Pure Python, zero system deps, works on Render Linux, already in codebase plan |
+| fpdf2 | 2.8.7 (latest) | Direct PDF construction — cells, images, shapes, tables | Pure Python, zero system deps, works on Render Linux, locked in by requirements |
 | Pillow | >=10.0.0 | Image loading, resizing, BytesIO conversion before embedding | Already in requirements.txt; fpdf2 uses Pillow internally |
 
 ### Supporting
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| Inter or Exo 2 | TTF (static) | Custom sans-serif font for professional look | Required — Render has no system fonts; bundle 2-4 TTF files (Regular, Bold, Italic) |
+| Inter TTF (static) | Google Fonts v18 | Custom sans-serif font for professional look | Required — Render has no system fonts; bundle 3 static TTF files (Regular, Bold, Italic) |
 
-### Removed
+### Removed (Phase 4 cleanup)
 | Library | Replacing | Reason |
 |---------|-----------|--------|
-| xhtml2pdf >=0.2.11 | fpdf2 | xhtml2pdf is HTML-to-PDF with CSS limitations, fragile on headless servers |
+| xhtml2pdf >=0.2.11 | fpdf2 | HTML-to-PDF with CSS limitations, fragile on headless servers |
 | weasyprint | fpdf2 | Requires GTK/Pango system libs — unusable on Render |
 | jinja2 >=3.1.0 | Not needed | Templates only used for report.html which is deleted |
 | python-bidi 0.4.2 | Not needed | RTL text support only needed for jinja2 HTML template |
@@ -123,7 +125,7 @@ The key implementation risks are: (1) image availability at PDF generation time 
 |------------|-----------|----------|
 | fpdf2 | reportlab | ReportLab has richer layout but AGPL license, heavier dep |
 | fpdf2 | weasyprint | Better CSS fidelity but requires system GTK/Pango — breaks Render |
-| Inter TTF | DejaVu | DejaVu ships with fpdf2 (historical), but Inter/Exo2 is more modern-looking |
+| Inter TTF | DejaVu (bundled in fpdf2) | DejaVu works out-of-box but looks dated; Inter is professional |
 
 **Installation:**
 ```bash
@@ -139,7 +141,7 @@ pip install fpdf2>=2.8.0
 
 ```
 backend/report.py              # MAJOR REWRITE — keep build_report_data(), replace rest
-assets/fonts/                  # NEW — bundled TTF files (ship with repo)
+assets/fonts/                  # NEW — bundled TTF files (must be committed to git)
     Inter-Regular.ttf
     Inter-Bold.ttf
     Inter-Italic.ttf
@@ -150,314 +152,11 @@ templates/                     # DELETE after Phase 4
 
 ### Pattern 1: FPDF Subclass with Header/Footer Override
 
-The standard fpdf2 pattern for per-page chrome. Called automatically on every `add_page()`.
+The standard fpdf2 pattern for per-page chrome. `header()` and `footer()` are called automatically on every `add_page()`.
 
 ```python
-# Source: https://py-pdf.github.io/fpdf2/Tutorial.html
+# Source: https://py-pdf.github.io/fpdf2/Tutorial.html (verified 2026-03-08)
 from fpdf import FPDF
-
-class BDDAReport(FPDF):
-    def __init__(self, report_data: dict):
-        super().__init__(orientation="P", unit="mm", format="A4")
-        self.report_data = report_data
-        self.report_ref = report_data.get("report_ref", "")
-
-    def header(self):
-        # Logo/brand left, report ref right
-        self.set_font("Inter", style="B", size=10)
-        self.set_text_color(15, 50, 90)          # brand dark blue
-        self.cell(0, 8, "DroneWind Asia", align="L")
-        self.set_font("Inter", style="", size=8)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 8, self.report_ref, align="R")
-        self.ln(2)
-        # Thin rule under header
-        self.set_draw_color(220, 220, 220)
-        self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
-        self.ln(4)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font("Inter", style="", size=8)
-        self.set_text_color(150, 150, 150)
-        self.cell(0, 10, f"Page {self.page_no()}", align="C")
-```
-
-### Pattern 2: Adding Bundled TTF Fonts
-
-Must call `add_font()` before any `set_font()`. Font files must be bundled in the repo — Render has no system fonts.
-
-```python
-# Source: https://py-pdf.github.io/fpdf2/Unicode.html
-FONT_DIR = Path(__file__).parent.parent / "assets" / "fonts"
-
-def _register_fonts(pdf: FPDF):
-    pdf.add_font("Inter", style="",  fname=str(FONT_DIR / "Inter-Regular.ttf"))
-    pdf.add_font("Inter", style="B", fname=str(FONT_DIR / "Inter-Bold.ttf"))
-    pdf.add_font("Inter", style="I", fname=str(FONT_DIR / "Inter-Italic.ttf"))
-```
-
-**Font sourcing:** Inter is available at https://fonts.google.com/specimen/Inter — download static TTF files. Three files needed: Regular, Bold, Italic (no build step, pure TTF).
-
-### Pattern 3: Image Embedding from File Path or PIL
-
-Defect images stored as JPEG tiles in job directory. Images deleted after triage means only tiles remain — must use `image_path` from classify_data carefully.
-
-```python
-# Source: https://py-pdf.github.io/fpdf2/Images.html
-# From file path (if file exists):
-pdf.image(str(image_path), x=10, y=pdf.get_y(), w=80, h=80, keep_aspect_ratio=True)
-
-# From PIL Image (e.g., after resize):
-from PIL import Image
-import io
-img = Image.open(image_path).convert("RGB")
-img.thumbnail((800, 800))   # resize before embed
-buf = io.BytesIO()
-img.save(buf, format="JPEG", quality=85)
-buf.seek(0)
-pdf.image(buf, x=10, y=pdf.get_y(), w=80, h=80)
-
-# If image is missing — graceful fallback:
-if Path(image_path).exists():
-    pdf.image(str(image_path), x=x, y=y, w=80, h=80, keep_aspect_ratio=True)
-else:
-    # Draw placeholder rect
-    pdf.set_fill_color(230, 230, 230)
-    pdf.rect(x, y, 80, 80, style="F")
-    pdf.set_xy(x, y + 35)
-    pdf.set_font("Inter", style="I", size=8)
-    pdf.cell(80, 10, "Image not available", align="C")
-```
-
-**IMPORTANT: Image availability issue.** DJI P1 source images are deleted after triage. The `image_path` field in classify_data points to paths like `/data/jobs/{job_id}/blade_A/LE_Mid_001.jpg` which are the classified images stored pre-deletion. Check whether these files survive (they should, since only the raw uploaded ZIPs are deleted, not the individual images used in classify). Must verify in `api.py` what exactly gets deleted.
-
-### Pattern 4: Colour-Coded Table Rows (PDF-04)
-
-fpdf2 `table()` context manager with `FontFace` for header styling. For per-row colour, use manual `set_fill_color()` + `cell(fill=True)`.
-
-```python
-# Source: https://py-pdf.github.io/fpdf2/Tables.html
-from fpdf.fonts import FontFace
-
-# Method A: fpdf2 table() with cell_fill_color per row (requires fpdf2 >= 2.7)
-with pdf.table(borders_layout="MINIMAL", line_height=7) as table:
-    for defect in blade_defects:
-        row = table.row()
-        rgb = hex_to_rgb(SEVERITY_RGB[defect["category"]])
-        row.cell(defect["defect_id"], style=FontFace(fill_color=rgb))
-        row.cell(defect["defect_name"], style=FontFace(fill_color=rgb))
-        # etc.
-
-# Method B: Manual cells (more control, simpler)
-def _severity_row(pdf, defect):
-    rgb = SEVERITY_RGB[defect["category"]]
-    pdf.set_fill_color(*rgb)
-    pdf.set_font("Inter", style="B", size=9)
-    pdf.cell(30, 8, defect["defect_id"], border="B", fill=True)
-    pdf.cell(0, 8, defect["defect_name"], border="B", fill=True, new_x="LMARGIN", new_y="NEXT")
-```
-
-### Pattern 5: Programmatic Blade Map (PDF-06)
-
-Draw blade schematic using `rect()`, `line()`, and `circle()`. The blade is represented as a tapered rectangle with zone grid overlay.
-
-```python
-# Source: https://py-pdf.github.io/fpdf2/Shapes.html
-# Blade schematic: root (wide) → tip (narrow)
-# Layout: 12 cells (3 positions × 4 zones) in a grid
-
-ZONE_COLORS = {
-    0: (200, 230, 200),  # green — Cat 0
-    1: (255, 240, 180),  # yellow
-    2: (255, 200, 100),  # orange
-    3: (230, 80, 80),    # red
-    4: (140, 0, 0),      # dark red
-}
-
-def _draw_blade_map(pdf, blade_label, blade_defects):
-    # Draw tapered blade outline
-    pdf.set_draw_color(80, 80, 80)
-    pdf.set_line_width(0.8)
-    # Zones: Root/Mid/Tip columns, LE/TE/PS/SS rows
-    cell_w, cell_h = 25, 12
-    start_x, start_y = pdf.l_margin + 20, pdf.get_y()
-    zones = ["LE", "TE", "PS", "SS"]
-    positions = ["Root", "Mid", "Tip"]
-
-    for row, zone in enumerate(zones):
-        for col, pos in enumerate(positions):
-            x = start_x + col * cell_w
-            y = start_y + row * cell_h
-            # Find worst defect in this zone+position
-            worst_cat = _worst_cat_in_zone(blade_defects, zone, pos)
-            rgb = ZONE_COLORS.get(worst_cat, (230, 230, 230))
-            pdf.set_fill_color(*rgb)
-            pdf.rect(x, y, cell_w, cell_h, style="FD")
-            # Label
-            pdf.set_xy(x, y + 3)
-            pdf.set_font("Inter", size=7)
-            pdf.cell(cell_w, 6, f"{zone}", align="C")
-
-    # Add defect markers as circles
-    for defect in blade_defects:
-        col = positions.index(defect.get("position", "Mid")) if defect.get("position") in positions else 1
-        row = zones.index(defect.get("zone", "LE")) if defect.get("zone") in zones else 0
-        cx = start_x + col * cell_w + cell_w / 2
-        cy = start_y + row * cell_h + cell_h / 2
-        worst_rgb = ZONE_COLORS.get(defect["category"], (128, 128, 128))
-        pdf.set_fill_color(*worst_rgb)
-        pdf.circle(x=cx - 3, y=cy - 3, radius=3, style="F")
-```
-
-### Pattern 6: Page Break Management
-
-For 1 defect per page layout, explicit `add_page()` before each defect section. For tables that might span pages, use `will_page_break()`.
-
-```python
-# Source: https://py-pdf.github.io/fpdf2/PageBreaks.html
-# Explicit page break before each defect:
-for i, defect in enumerate(blade_defects):
-    pdf.add_page()   # each defect gets its own page
-    _render_defect_page(pdf, defect)
-
-# Or for action matrix table — check before adding row:
-if pdf.will_page_break(row_height):
-    pdf.add_page()
-```
-
-### Pattern 7: Table of Contents (Page 2)
-
-fpdf2 does not have built-in TOC support. Implementation: render all pages first, track page numbers in a dict, then insert TOC page at position 2. In practice: generate TOC after all other pages, since page numbers are known.
-
-```python
-# Strategy: deferred TOC with known page numbers
-# After rendering all content pages, use pdf.page to get final page count
-# Insert TOC as page 2 using FPDF.insert_toc_placeholder() if available,
-# or use two-pass: first pass collects page numbers, second pass renders.
-# SIMPLER: since content is deterministic (1 defect/page), calculate page
-# numbers before rendering:
-page_map = {
-    "cover": 1,
-    "toc": 2,
-    "executive_summary": 3,
-    "blade_A": 4,   # adjust based on defect count
-    # etc.
-}
-```
-
-**Note:** fpdf2 has `insert_toc_placeholder()` and `set_section_title_styles()` in recent versions for automatic TOC. Verify availability in 2.8.4 — if present, use it. If not, pre-calculate page offsets (deterministic since 1 defect/page).
-
-### Anti-Patterns to Avoid
-- **Setting font before add_page():** Always call `add_page()` first, then configure fonts.
-- **Using hex colours directly:** fpdf2 uses RGB integers (0-255), not hex strings. Convert hex to RGB tuples before use.
-- **Embedding raw base64 strings directly:** fpdf2's `image()` can accept BytesIO but not raw base64 strings. Decode base64 → BytesIO first.
-- **Reusing FPDF instance across requests:** Create a new `BDDAReport` instance per PDF generation call (thread safety).
-- **Calling output() then adding content:** `output()` finalizes the document. Build everything first.
-- **Missing image path assumption:** Don't assume image paths from `classify_data` exist. Files may be gone if job directory was cleaned. Always guard with `Path(p).exists()`.
-
----
-
-## Don't Hand-Roll
-
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| Colour-coded table rows | Custom row renderer | fpdf2 `table()` + `FontFace(fill_color=...)` | Handles page breaks, column widths, borders natively |
-| Page-level chrome | Manual header/footer calls | `FPDF.header()` + `FPDF.footer()` override | Called automatically on every page including add_page() |
-| Font subsetting | No-op | fpdf2 handles it internally | fpdf2 auto-subsets TTF fonts for small file sizes |
-| Image resizing | Manual PIL code before embed | Pillow `thumbnail()` → BytesIO → `pdf.image()` | Simple, already in codebase via Pillow in requirements.txt |
-| Unicode support | Fallback logic | TTF font via `add_font()` | Built-in once font is registered |
-
-**Key insight:** fpdf2's cell/multi_cell/table primitives handle all common layout needs. Hand-rolling coordinate math is only needed for the blade map schematic (no table/cell abstraction fits that use case).
-
----
-
-## Common Pitfalls
-
-### Pitfall 1: Severity Colour Scale Mismatch
-
-**What goes wrong:** `SEVERITY_COLORS` in current report.py uses keys 1-5 (not 0-4). The CONTEXT.md and REQUIREMENTS.md describe IEC Cat 0-4. The classify.py output uses `iec_category` 0-4. There is an off-by-one if you use the existing `SEVERITY_COLORS` dict directly for IEC Cat 0-4.
-**Why it happens:** The old taxonomy used a 1-5 scale; classify.py was rewritten to use 0-4 (IEC standard).
-**How to avoid:** Define a new `SEVERITY_COLORS_IEC` dict keyed 0-4 in the new report.py. Do not reuse the old 1-5 dict.
-**Warning signs:** Cat 0 (no defects) displays wrong colour; Cat 4 defects show no entry.
-
-```python
-# Correct IEC 0-4 mapping (new report.py)
-SEVERITY_COLORS_IEC = {
-    0: {"rgb": (34, 197, 94),   "label": "Cat 0 — No Action"},    # green
-    1: {"rgb": (234, 179, 8),   "label": "Cat 1 — Log"},           # yellow
-    2: {"rgb": (249, 115, 22),  "label": "Cat 2 — Monitor"},       # orange
-    3: {"rgb": (239, 68, 68),   "label": "Cat 3 — Planned"},       # red
-    4: {"rgb": (127, 29, 29),   "label": "Cat 4 — Urgent"},        # dark red
-}
-```
-
-### Pitfall 2: Image Path Availability at PDF Generation Time
-
-**What goes wrong:** `classify_data` stores `image_path` pointing to files under the job directory. The API deletes raw uploaded images post-triage, but classified image files (in `{job_dir}/classify/` or similar) may or may not exist depending on what `api.py` deletes.
-**Why it happens:** The delete-after-triage policy was designed for the large DJI P1 RAW files (15-30MB each), not for the smaller JPEG tiles used in classify.
-**How to avoid:** In `_render_defect_page()`, always guard: `if Path(defect["image_path"]).exists()`. If missing, render a grey placeholder box. Never crash on missing image.
-**Warning signs:** PDF generation fails with FileNotFoundError on image paths.
-
-### Pitfall 3: Font Not Found on Render
-
-**What goes wrong:** `add_font()` raises `FileNotFoundError` because TTF files are not committed to the repo or not at the expected path.
-**Why it happens:** Fonts bundled locally but not added to git, or path relative to cwd instead of `__file__`.
-**How to avoid:** Use `Path(__file__).parent.parent / "assets" / "fonts"` for the font path (absolute relative to the module file). Commit all TTF files. Add `assets/fonts/*.ttf` to git.
-**Warning signs:** `FileNotFoundError: No such file or directory: 'Inter-Regular.ttf'` in Render logs.
-
-### Pitfall 4: TOC Page Numbers Unknown at Render Time
-
-**What goes wrong:** TOC is page 2 but page numbers for subsequent sections aren't known until after all pages are rendered.
-**Why it happens:** Page numbers depend on defect count per blade, which is dynamic.
-**How to avoid:** Pre-calculate page numbers before rendering. Since 1 defect per page, the layout is deterministic: `page = 1 (cover) + 1 (toc) + 1 (exec summary) + cumulative_defect_count`. Build `page_map` dict before rendering any content, pass to `BDDAReport.__init__`.
-**Warning signs:** TOC shows wrong page numbers.
-
-### Pitfall 5: Large PDF Size from Unresized Defect Images
-
-**What goes wrong:** Embedding full-resolution JPEG tiles (1024×1024px) as 80mm thumbnails produces unnecessarily large PDFs.
-**Why it happens:** fpdf2 embeds the full image data even if display size is small.
-**How to avoid:** Always resize to target display dimensions before embedding. For 80mm at 150 DPI ≈ 472px. Resize with Pillow `thumbnail((472, 472))` before passing to `pdf.image()`.
-**Warning signs:** PDFs >10MB for single turbine reports.
-
-### Pitfall 6: Hex to RGB Conversion
-
-**What goes wrong:** `set_fill_color("#fee2e2")` fails — fpdf2 expects `set_fill_color(r, g, b)` with integer 0-255 values, not hex strings.
-**Why it happens:** Current `SEVERITY_COLORS` stores hex strings (CSS format).
-**How to avoid:** Write a `hex_to_rgb(hex_str)` utility at top of report.py. Or store RGB tuples from the start.
-```python
-def hex_to_rgb(hex_color: str) -> tuple:
-    hex_color = hex_color.lstrip("#")
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-```
-
----
-
-## Code Examples
-
-Verified patterns from official sources and codebase analysis:
-
-### Full PDF Class Skeleton
-```python
-# Source: fpdf2 official docs (Tutorial.html, Unicode.html)
-from pathlib import Path
-from fpdf import FPDF
-
-FONT_DIR = Path(__file__).parent.parent / "assets" / "fonts"
-
-# IEC 0-4 severity RGB (corrected from old 1-5 scale)
-SEVERITY_RGB = {
-    0: (34, 197, 94),
-    1: (234, 179, 8),
-    2: (249, 115, 22),
-    3: (239, 68, 68),
-    4: (127, 29, 29),
-}
-
-BRAND_DARK = (15, 50, 90)    # dark navy
-BRAND_MID  = (0, 100, 160)   # steel blue
-BRAND_LIGHT = (220, 235, 248) # pale blue background
-
 
 class BDDAReport(FPDF):
     def __init__(self, report_data: dict):
@@ -469,16 +168,20 @@ class BDDAReport(FPDF):
         self.set_margins(left=15, top=20, right=15)
 
     def _register_fonts(self):
-        self.add_font("Inter", style="",  fname=str(FONT_DIR / "Inter-Regular.ttf"))
-        self.add_font("Inter", style="B", fname=str(FONT_DIR / "Inter-Bold.ttf"))
-        self.add_font("Inter", style="I", fname=str(FONT_DIR / "Inter-Italic.ttf"))
+        try:
+            self.add_font("Inter", style="",  fname=str(FONT_DIR / "Inter-Regular.ttf"))
+            self.add_font("Inter", style="B", fname=str(FONT_DIR / "Inter-Bold.ttf"))
+            self.add_font("Inter", style="I", fname=str(FONT_DIR / "Inter-Italic.ttf"))
+        except FileNotFoundError:
+            # Fallback to Helvetica if fonts not bundled (should not happen in production)
+            print("WARNING: Inter TTF not found, falling back to Helvetica")
 
     def header(self):
         if self.page_no() == 1:
             return  # Cover page has no standard header
         self.set_y(8)
         self.set_font("Inter", "B", 9)
-        self.set_text_color(*BRAND_DARK)
+        self.set_text_color(*BRAND_NAVY)
         self.cell(95, 6, "DroneWind Asia", align="L")
         self.set_font("Inter", "", 8)
         self.set_text_color(120, 120, 120)
@@ -495,6 +198,344 @@ class BDDAReport(FPDF):
         self.set_font("Inter", "", 7)
         self.set_text_color(160, 160, 160)
         self.cell(0, 6, f"Page {self.page_no()} | Confidential — DroneWind Asia Inspection Report", align="C")
+```
+
+### Pattern 2: Adding Bundled TTF Fonts
+
+Must call `add_font()` before any `set_font()`. Font files must be committed to the repo — Render has no system fonts. Path must be absolute derived from `__file__`, not from cwd.
+
+```python
+# Source: https://py-pdf.github.io/fpdf2/Unicode.html (verified 2026-03-08)
+FONT_DIR = Path(__file__).parent.parent / "assets" / "fonts"
+```
+
+**Font sourcing:** Inter available at https://fonts.google.com/specimen/Inter — download the "static" zip and extract 3 files: `static/Inter-Regular.ttf`, `static/Inter-Bold.ttf`, `static/Inter-Italic.ttf`. Alternative: GitHub releases at https://github.com/rsms/inter/releases.
+
+### Pattern 3: Table of Contents with insert_toc_placeholder()
+
+`insert_toc_placeholder()` is confirmed available in fpdf2 2.8.x. It uses a render callback and places a placeholder that is filled after all pages are rendered. This is more robust than pre-calculating page offsets.
+
+```python
+# Source: https://py-pdf.github.io/fpdf2/DocumentOutlineAndTableOfContents.html (verified 2026-03-08)
+from fpdf import FPDF
+from fpdf.outline import TableOfContents
+
+class BDDAReport(FPDF):
+    def render_toc(self):
+        # Called on page 2 (TOC page) after all other pages rendered
+        toc = TableOfContents()
+        self.insert_toc_placeholder(toc.render_toc, pages=1)
+
+    # Alternative: custom TOC renderer for full layout control
+    def _custom_toc_renderer(pdf, outline):
+        """Render TOC with custom styling."""
+        pdf.set_font("Inter", "B", 14)
+        pdf.cell(0, 10, "Table of Contents", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(4)
+        for section in outline:
+            pdf.set_font("Inter", "", 10)
+            # section.name, section.page_number, section.level
+            indent = section.level * 5
+            pdf.set_x(pdf.l_margin + indent)
+            pdf.cell(120 - indent, 7, section.name, align="L")
+            pdf.cell(0, 7, str(section.page_number), align="R", new_x="LMARGIN", new_y="NEXT")
+```
+
+**Key API for TOC:** Call `insert_toc_placeholder(render_fn, pages=1)` when you want the TOC to appear. Use `start_section(name, level=0)` to register sections as you render them. fpdf2 handles the page number injection automatically.
+
+**Simpler alternative** (if TOC precision matters more than automation): pre-calculate page numbers. With 1 defect per page, the layout is deterministic: `page = 1 (cover) + 1 (toc) + 1 (exec summary) + sum(defect counts per blade) + 1 (action matrix) + N_blades (blade maps) + 1 (inspection details)`.
+
+### Pattern 4: Image Embedding from File Path or PIL
+
+```python
+# Source: https://py-pdf.github.io/fpdf2/Images.html (verified 2026-03-08)
+# fpdf2 image() accepts: file paths, PIL Image objects, BytesIO, URLs
+
+# From file path (recommended — fpdf2 handles internally):
+pdf.image(str(image_path), x=10, y=pdf.get_y(), w=80, h=80, keep_aspect_ratio=True)
+
+# From PIL (after resize — for size control):
+from PIL import Image
+import io
+img = Image.open(image_path).convert("RGB")
+img.thumbnail((472, 472), Image.LANCZOS)   # 80mm @ 150dpi ≈ 472px
+buf = io.BytesIO()
+img.save(buf, format="JPEG", quality=82)
+buf.seek(0)
+pdf.image(buf, x=10, y=pdf.get_y(), w=80, h=80, keep_aspect_ratio=True)
+
+# Graceful fallback if image missing:
+if Path(image_path).exists():
+    pdf.image(str(image_path), x=x, y=y, w=80, h=80, keep_aspect_ratio=True)
+else:
+    pdf.set_fill_color(230, 230, 230)
+    pdf.rect(x, y, 80, 80, style="F")
+    pdf.set_xy(x, y + 35)
+    pdf.set_font("Inter", "I", 7)
+    pdf.set_text_color(140, 140, 140)
+    pdf.cell(80, 6, "Image not available", align="C")
+```
+
+### Pattern 5: Colour-Coded Table Rows (PDF-04)
+
+```python
+# Source: https://py-pdf.github.io/fpdf2/Tables.html (verified 2026-03-08)
+# Manual cell approach — most control for per-row colouring:
+
+def _severity_row(pdf, defect):
+    cat = defect.get("category", 0)
+    info = SEVERITY_COLORS_IEC.get(cat, SEVERITY_COLORS_IEC[0])
+    pdf.set_fill_color(*info["rgb"])
+    pdf.set_text_color(*info["text_rgb"])
+    pdf.set_font("Inter", "B", 9)
+    pdf.cell(20, 8, f"P{priority_from_cat(cat)}", border="B", fill=True)
+    pdf.cell(15, 8, defect.get("blade", ""), border="B", fill=True)
+    pdf.cell(30, 8, defect.get("defect_id", ""), border="B", fill=True)
+    pdf.cell(0, 8, defect.get("defect_name", "")[:45], border="B", fill=True,
+             new_x="LMARGIN", new_y="NEXT")
+```
+
+### Pattern 6: Programmatic Blade Map (PDF-06)
+
+**CORRECTION from previous research:** `circle(x, y, radius)` uses `x, y` as **center** coordinates. Do NOT subtract radius. Confirmed from fpdf2 API docs (2026-03-08): the method calls `ellipse(x - radius, y - radius, 2*radius, 2*radius)` internally, so the user provides center coords.
+
+```python
+# Source: https://py-pdf.github.io/fpdf2/Shapes.html (verified 2026-03-08)
+# CORRECT circle call:
+pdf.circle(x=cx, y=cy, radius=3, style="F")   # cx, cy are center coordinates
+# WRONG (previous research had this bug):
+# pdf.circle(x=cx - 3, y=cy - 3, radius=3, style="F")  # DO NOT USE
+
+ZONE_COLORS_IEC = {
+    -1: (230, 230, 230),  # no defects
+    0:  (34, 197, 94),    # green
+    1:  (234, 179, 8),    # yellow
+    2:  (249, 115, 22),   # orange
+    3:  (239, 68, 68),    # red
+    4:  (127, 29, 29),    # dark red
+}
+
+def _draw_blade_map(pdf, blade_label, blade_defects):
+    zones = ["LE", "TE", "PS", "SS"]
+    positions = ["Root", "Mid", "Tip"]
+    cell_w, cell_h = 30, 15
+    start_x = pdf.l_margin + 20
+    start_y = pdf.get_y() + 5
+
+    for row, zone in enumerate(zones):
+        for col, pos in enumerate(positions):
+            x = start_x + col * cell_w
+            y = start_y + row * cell_h
+            worst_cat = _worst_cat_in_zone(blade_defects, zone, pos)
+            rgb = ZONE_COLORS_IEC.get(worst_cat, (230, 230, 230))
+            pdf.set_fill_color(*rgb)
+            pdf.set_draw_color(180, 180, 180)
+            pdf.rect(x, y, cell_w, cell_h, style="FD")
+            # Zone label in cell
+            pdf.set_text_color(50, 50, 50)
+            pdf.set_font("Inter", "", 7)
+            pdf.set_xy(x, y + 4)
+            pdf.cell(cell_w, 6, zone, align="C")
+
+    # Defect markers: circles at zone+position center
+    for defect in blade_defects:
+        zone = defect.get("zone", "LE")
+        pos = defect.get("position", "Mid")
+        col = positions.index(pos) if pos in positions else 1
+        row = zones.index(zone) if zone in zones else 0
+        # Center coordinates:
+        cx = start_x + col * cell_w + cell_w / 2
+        cy = start_y + row * cell_h + cell_h / 2
+        cat = defect.get("category", 0)
+        rgb = ZONE_COLORS_IEC.get(cat, (128, 128, 128))
+        pdf.set_fill_color(*rgb)
+        pdf.set_draw_color(255, 255, 255)
+        pdf.circle(x=cx, y=cy, radius=3, style="FD")  # center coords!
+```
+
+### Pattern 7: Page Break Management
+
+```python
+# Source: https://py-pdf.github.io/fpdf2/PageBreaks.html (verified 2026-03-08)
+# For 1 defect per page: explicit add_page()
+for defect in blade_defects:
+    pdf.add_page()
+    _render_defect_page(pdf, defect)
+
+# For action matrix table — check before adding row:
+if pdf.will_page_break(row_height):
+    pdf.add_page()
+    _render_action_matrix_header(pdf)  # re-draw column headers
+```
+
+### Anti-Patterns to Avoid
+
+- **Wrong circle() coordinates:** `pdf.circle(x=cx - r, y=cy - r, radius=r)` is wrong. Use `pdf.circle(x=cx, y=cy, radius=r)` — x,y are center.
+- **Setting font before add_page():** Always call `add_page()` before configuring fonts.
+- **Using hex colours directly:** fpdf2 uses RGB integers (0-255). Use `set_fill_color(r, g, b)` not `set_fill_color("#fee2e2")`.
+- **Embedding raw base64 strings:** `image()` accepts BytesIO but not raw base64 strings. Decode base64 → BytesIO first.
+- **Reusing FPDF instance across requests:** Create a new `BDDAReport` instance per call (thread safety).
+- **Calling output() then adding content:** `output()` finalizes. Build everything first.
+- **Missing image path guard:** Always check `Path(image_path).exists()` before embedding. Image files from classify.json point to deleted originals unless Plan 02 is applied.
+
+---
+
+## Don't Hand-Roll
+
+| Problem | Don't Build | Use Instead | Why |
+|---------|-------------|-------------|-----|
+| Colour-coded table rows | Custom row renderer | Manual `set_fill_color()` + `cell(fill=True)` loop | Handles page breaks, avoids fpdf2 table() complexity for coloured rows |
+| Page-level chrome | Manual header/footer calls | `FPDF.header()` + `FPDF.footer()` override | Called automatically on every `add_page()` including those from auto page breaks |
+| Font subsetting | No-op | fpdf2 handles it internally | fpdf2 auto-subsets TTF fonts for smaller file sizes |
+| Image resizing before embed | Complex PIL code | Pillow `thumbnail()` → BytesIO → `pdf.image()` | Simple, already have Pillow |
+| TOC page number tracking | Manual page counter dict | `insert_toc_placeholder()` + `start_section()` | Library handles injection; or pre-calculate (1 defect/page = deterministic) |
+
+**Key insight:** fpdf2's cell/multi_cell primitives handle all common layout needs. Hand-rolling coordinate math is only needed for the blade map schematic (no table/cell abstraction fits a zone grid).
+
+---
+
+## Common Pitfalls
+
+### Pitfall 1: Severity Scale Mismatch (1-5 vs 0-4)
+
+**What goes wrong:** `SEVERITY_COLORS` in current report.py uses keys 1-5. The classify.py output uses `iec_category` 0-4. `build_report_data()` reads `d["category"]` — in real pipeline data this comes from `iec_category` (0-4), in sample data it's stored as `category` (using the old 1-5 scale in `make_sample_classify_data()`).
+
+**How to avoid:** Define `SEVERITY_COLORS_IEC` keyed 0-4 for all fpdf2 rendering. Fix `build_report_data()` to normalize the key: `d.setdefault("category", d.get("iec_category", 0))` so both pipeline data and sample data work. Do NOT reuse the old `SEVERITY_COLORS` dict for rendering.
+
+**Warning signs:** Cat 0 shows wrong colour (off by one); Cat 4 entries show no colour band (key not found).
+
+```python
+# Correct IEC 0-4 mapping for fpdf2 (RGB values)
+SEVERITY_COLORS_IEC = {
+    0: {"rgb": (34, 197, 94),   "label": "Cat 0 — No Action",  "text_rgb": (20, 83, 45)},
+    1: {"rgb": (234, 179, 8),   "label": "Cat 1 — Log",         "text_rgb": (133, 77, 14)},
+    2: {"rgb": (249, 115, 22),  "label": "Cat 2 — Monitor",     "text_rgb": (154, 52, 18)},
+    3: {"rgb": (239, 68, 68),   "label": "Cat 3 — Planned",     "text_rgb": (153, 27, 27)},
+    4: {"rgb": (127, 29, 29),   "label": "Cat 4 — Urgent",      "text_rgb": (255, 255, 255)},
+}
+```
+
+### Pitfall 2: Image Path Availability at PDF Generation Time (CONFIRMED BUG)
+
+**What goes wrong:** `classify_data` stores `image_path` values pointing to files under `job_dir/images/`. After triage, `api.py` calls `shutil.rmtree(job_dir / "images")` which deletes ALL these files. When report.py tries to embed defect images, ALL paths are dead.
+
+**Confirmed from codebase:** Lines 241-243 of api.py:
+```python
+images_dir = job_dir / "images"
+if images_dir.exists():
+    shutil.rmtree(images_dir)
+```
+This runs after triage, before classify. The `classify_batch()` call immediately after reads from the flagged list which still has the old paths — it reads the images before they are already deleted (triage already ran). But classify.py saves `str(path)` as `image_path` into classify.json — those paths are already gone.
+
+**How to avoid:** Plan 02 creates thumbnail copies in `job_dir/thumbnails/` before the rmtree and rewrites flagged paths to point to thumbnails. This must execute before Plan 03 or image embedding produces all placeholders.
+
+**Warning signs:** Every defect image in PDF is a grey placeholder box.
+
+### Pitfall 3: circle() Coordinate Bug
+
+**What goes wrong:** Previous research (2026-03-07) showed `pdf.circle(x=cx - 3, y=cy - 3, radius=3)` — subtracting the radius from x,y. This is WRONG. fpdf2 `circle(x, y, radius)` uses `x, y` as center coordinates already (confirmed from API source: it calls `ellipse(x - radius, y - radius, 2*radius, 2*radius)` internally).
+
+**How to avoid:** Use `pdf.circle(x=cx, y=cy, radius=3, style="F")` where `cx, cy` are the center coordinates you want. No subtraction needed.
+
+**Warning signs:** Defect markers on blade map appear offset (shifted down-right by one radius) from their intended positions.
+
+### Pitfall 4: Font Not Found on Render
+
+**What goes wrong:** `add_font()` raises `FileNotFoundError` on Render because TTF files are not committed to git or the path uses `cwd` instead of `__file__`.
+
+**How to avoid:**
+1. Use `FONT_DIR = Path(__file__).parent.parent / "assets" / "fonts"` (absolute, relative to the module file)
+2. Commit all TTF files (`git add assets/fonts/*.ttf`)
+3. Have a fallback to Helvetica for graceful degradation
+
+**Warning signs:** `FileNotFoundError: No such file or directory: 'Inter-Regular.ttf'` in Render logs.
+
+### Pitfall 5: Large PDF from Unresized Images
+
+**What goes wrong:** Embedding full-resolution JPEG thumbnails (1568×1568px) as 80mm thumbnails produces unnecessarily large PDFs.
+
+**How to avoid:** Always resize before embedding. For 80mm at 150 DPI ≈ 472px. Use `img.thumbnail((472, 472), Image.LANCZOS)` before passing to `pdf.image()`.
+
+**Warning signs:** PDFs >10MB for single turbine reports.
+
+### Pitfall 6: Hex to RGB Conversion
+
+**What goes wrong:** `set_fill_color("#fee2e2")` fails — fpdf2 expects integer 0-255 values, not hex strings.
+
+```python
+def hex_to_rgb(hex_color: str) -> tuple:
+    """Convert '#fee2e2' → (254, 226, 226) for fpdf2 set_fill_color()."""
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+```
+
+---
+
+## Code Examples
+
+### Full PDF Class Skeleton
+
+```python
+# Source: fpdf2 official docs (Tutorial.html, Unicode.html) — verified 2026-03-08
+from pathlib import Path
+from fpdf import FPDF
+from PIL import Image
+import io
+
+FONT_DIR = Path(__file__).parent.parent / "assets" / "fonts"
+
+SEVERITY_COLORS_IEC = {
+    0: {"rgb": (34, 197, 94),   "label": "Cat 0 — No Action",  "text_rgb": (20, 83, 45)},
+    1: {"rgb": (234, 179, 8),   "label": "Cat 1 — Log",         "text_rgb": (133, 77, 14)},
+    2: {"rgb": (249, 115, 22),  "label": "Cat 2 — Monitor",     "text_rgb": (154, 52, 18)},
+    3: {"rgb": (239, 68, 68),   "label": "Cat 3 — Planned",     "text_rgb": (153, 27, 27)},
+    4: {"rgb": (127, 29, 29),   "label": "Cat 4 — Urgent",      "text_rgb": (255, 255, 255)},
+}
+
+BRAND_NAVY  = (15, 50, 90)
+BRAND_STEEL = (0, 100, 160)
+BRAND_LIGHT = (220, 235, 248)
+
+
+class BDDAReport(FPDF):
+    def __init__(self, report_data: dict):
+        super().__init__(orientation="P", unit="mm", format="A4")
+        self.report_data = report_data
+        self.report_ref = report_data.get("report_ref", "")
+        self._register_fonts()
+        self.set_auto_page_break(auto=True, margin=20)
+        self.set_margins(left=15, top=20, right=15)
+
+    def _register_fonts(self):
+        try:
+            self.add_font("Inter", style="",  fname=str(FONT_DIR / "Inter-Regular.ttf"))
+            self.add_font("Inter", style="B", fname=str(FONT_DIR / "Inter-Bold.ttf"))
+            self.add_font("Inter", style="I", fname=str(FONT_DIR / "Inter-Italic.ttf"))
+        except FileNotFoundError:
+            print("WARNING: Inter TTF fonts not found in assets/fonts/ — falling back to Helvetica")
+
+    def header(self):
+        if self.page_no() == 1:
+            return
+        self.set_y(8)
+        self.set_font("Inter", "B", 9)
+        self.set_text_color(*BRAND_NAVY)
+        self.cell(95, 6, "DroneWind Asia", align="L")
+        self.set_font("Inter", "", 8)
+        self.set_text_color(120, 120, 120)
+        self.cell(0, 6, self.report_ref, align="R")
+        self.ln(2)
+        self.set_draw_color(200, 200, 200)
+        self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+        self.set_y(self.get_y() + 4)
+
+    def footer(self):
+        if self.page_no() == 1:
+            return
+        self.set_y(-12)
+        self.set_font("Inter", "", 7)
+        self.set_text_color(160, 160, 160)
+        self.cell(0, 6, f"Page {self.page_no()} | Confidential — DroneWind Asia Inspection Report", align="C")
 
 
 def generate_pdf_fpdf2(report_data: dict, output_path: Path) -> Path:
@@ -504,109 +545,154 @@ def generate_pdf_fpdf2(report_data: dict, output_path: Path) -> Path:
 
     pdf = BDDAReport(report_data)
 
-    # Build page map first (deterministic with 1 defect/page)
-    page_map = _build_page_map(report_data)
-
     _render_cover(pdf, report_data)
-    _render_toc(pdf, report_data, page_map)
+    # TOC page — use insert_toc_placeholder or pre-calculated page_map
+    _render_toc(pdf, report_data)
     _render_executive_summary(pdf, report_data)
-    for blade in report_data["blades_sorted"]:
+
+    # Defect pages: 1 per defect
+    defect_index = 1
+    total_defects = report_data.get("total_defects", 0)
+    for blade in report_data.get("blades_sorted", []):
         for defect in report_data["blade_findings"].get(blade, []):
             pdf.add_page()
-            _render_defect_page(pdf, defect)
+            _render_defect_page(pdf, defect, defect_index, total_defects)
+            defect_index += 1
+
     _render_action_matrix(pdf, report_data)
-    for blade in report_data["blades_sorted"]:
+
+    for blade in report_data.get("blades_sorted", []):
         pdf.add_page()
         _render_blade_map(pdf, blade, report_data["blade_findings"].get(blade, []))
+
     _render_inspection_details(pdf, report_data)
 
     pdf.output(str(output_path))
     return output_path
 ```
 
-### Hex to RGB Utility
-```python
-def hex_to_rgb(hex_color: str) -> tuple:
-    """Convert '#fee2e2' → (254, 226, 226) for fpdf2 set_fill_color()."""
-    hex_color = hex_color.lstrip("#")
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-```
-
 ### Defect Image Embedding with Fallback
-```python
-# Source: fpdf2 Images.html + PIL integration pattern
-from PIL import Image
-import io
 
-def _embed_defect_image(pdf: FPDF, image_path: str, x: float, y: float,
+```python
+# Source: fpdf2 Images.html + PIL integration — verified 2026-03-08
+def _embed_defect_image(pdf, image_path: str, x: float, y: float,
                          w: float = 80, h: float = 80):
     """Embed defect image at position; show placeholder if missing."""
-    path = Path(image_path)
-    if not path.exists():
+    path = Path(image_path) if image_path else None
+    if not path or not path.exists():
         # Grey placeholder
         pdf.set_fill_color(220, 220, 220)
         pdf.rect(x, y, w, h, style="F")
-        pdf.set_xy(x, y + h/2 - 3)
+        pdf.set_xy(x, y + h / 2 - 3)
         pdf.set_font("Inter", "I", 7)
         pdf.set_text_color(140, 140, 140)
         pdf.cell(w, 6, "Image not available", align="C")
         return
 
-    # Resize before embed to keep PDF size manageable
     try:
-        with Image.open(path).convert("RGB") as img:
-            img.thumbnail((472, 472), Image.LANCZOS)  # 80mm @ 150dpi ≈ 472px
+        with Image.open(path) as img:
+            img = img.convert("RGB")
+            img.thumbnail((472, 472), Image.LANCZOS)  # 80mm @ 150dpi
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=82)
             buf.seek(0)
         pdf.image(buf, x=x, y=y, w=w, h=h, keep_aspect_ratio=True)
     except Exception:
-        # On any image error — draw placeholder
+        # Any image error — draw placeholder
         pdf.set_fill_color(220, 220, 220)
         pdf.rect(x, y, w, h, style="F")
 ```
 
-### Page Map Pre-calculation
+### Blade Map with Correct circle() Coordinates
+
 ```python
-def _build_page_map(report_data: dict) -> dict:
-    """Pre-calculate page numbers for TOC. 1 defect per page."""
-    page = 1
-    page_map = {"cover": page}
-    page += 1; page_map["toc"] = page
-    page += 1; page_map["executive_summary"] = page
-    page += 1
+# Source: fpdf2 Shapes.html — verified 2026-03-08
+# circle(x, y, radius) — x, y are CENTER coordinates!
+def _worst_cat_in_zone(defects, zone, position):
+    """Return worst IEC category (0-4) for a zone+position cell, or -1 if no defects."""
+    matches = [
+        d.get("category", 0)
+        for d in defects
+        if d.get("zone") == zone and d.get("position") == position
+    ]
+    return max(matches) if matches else -1
 
-    for blade in report_data["blades_sorted"]:
-        defects = report_data["blade_findings"].get(blade, [])
-        page_map[f"blade_{blade}"] = page
-        page += max(len(defects), 1)  # at least 1 page per blade (even if no defects)
 
-    page_map["action_matrix"] = page
-    page += 1  # may be multi-page for large defect counts — simplify to 1 for TOC
+def _render_blade_map(pdf, blade_label, blade_defects):
+    pdf.add_page()
+    zones = ["LE", "TE", "PS", "SS"]
+    positions = ["Root", "Mid", "Tip"]
+    cell_w, cell_h = 30, 15
+    start_x = pdf.l_margin + 20
+    start_y = pdf.get_y() + 15
 
-    for blade in report_data["blades_sorted"]:
-        page_map[f"map_{blade}"] = page
-        page += 1
+    # Zone grid
+    for row, zone in enumerate(zones):
+        for col, pos in enumerate(positions):
+            x = start_x + col * cell_w
+            y = start_y + row * cell_h
+            worst_cat = _worst_cat_in_zone(blade_defects, zone, pos)
+            rgb = ZONE_COLORS_IEC.get(worst_cat, (230, 230, 230))
+            pdf.set_fill_color(*rgb)
+            pdf.set_draw_color(180, 180, 180)
+            pdf.rect(x, y, cell_w, cell_h, style="FD")
+            pdf.set_text_color(50, 50, 50)
+            pdf.set_font("Inter", "", 7)
+            pdf.set_xy(x, y + 4)
+            pdf.cell(cell_w, 6, zone, align="C")
 
-    page_map["inspection_details"] = page
-    return page_map
+    # Defect markers: circle at zone+position center
+    for defect in blade_defects:
+        zone = defect.get("zone", "LE")
+        pos = defect.get("position", "Mid")
+        col = positions.index(pos) if pos in positions else 1
+        row = zones.index(zone) if zone in zones else 0
+        # Center of cell:
+        cx = start_x + col * cell_w + cell_w / 2
+        cy = start_y + row * cell_h + cell_h / 2
+        cat = defect.get("category", 0)
+        info = SEVERITY_COLORS_IEC.get(cat, SEVERITY_COLORS_IEC[0])
+        pdf.set_fill_color(*info["rgb"])
+        pdf.set_draw_color(255, 255, 255)
+        pdf.circle(x=cx, y=cy, radius=3, style="FD")   # x,y are CENTER coords
+```
+
+### iec_category Key Normalization in build_report_data()
+
+```python
+# Fix for build_report_data() — classify.py saves "iec_category", sample data uses "category"
+# After the all_defects list is built, normalize keys:
+for d in all_defects:
+    d.setdefault("category", d.get("iec_category", 0))
+
+# And in the blade_findings inner loop, read category safely:
+cat = d.get("category", d.get("iec_category", 0))
 ```
 
 ---
 
 ## Data Structure Analysis (Verified from Codebase)
 
+### Image Path Lifecycle (CONFIRMED)
+
+```
+1. api.py uploads images to:    job_dir/images/{blade}/{zone}/{filename}.jpg
+2. triage.py runs on those paths (image_path stored in TriageResult)
+3. api.py calls shutil.rmtree(job_dir / "images")  ← DELETES ALL IMAGES
+4. classify.py processes thumbnails (Plan 02 rewrites paths to job_dir/thumbnails/)
+5. classify.json saves: {"image_path": "job_dir/thumbnails/{filename}.jpg", ...}
+6. report.py reads classify.json and embeds images from those paths  ← MUST EXIST
+```
+
+Without Plan 02, step 5 saves deleted paths. Plan 02 makes thumbnails available at step 4+.
+
 ### Key Fields Available in report_data
 
-The existing `build_report_data()` function (staying unchanged) provides everything needed:
-
 ```python
-# Fields used per section:
-
 # Cover Page:
 report_data["turbine"]["turbine_id"]       # e.g. "JAP19"
 report_data["turbine"]["site_name"]        # e.g. "Tomamae Wind Farm"
-report_data["turbine"]["inspection_date"]  # ISO date
+report_data["turbine"]["inspection_date"]
 report_data["turbine"]["inspector_name"]
 report_data["report_ref"]                  # e.g. "BDDA-JAP19-20251130"
 report_data["condition"]                   # "A"|"B"|"C"|"D"
@@ -614,31 +700,27 @@ report_data["condition_info"]              # {"label": "Good", "color": "#22c55e
 
 # Executive Summary:
 report_data["total_defects"]
-report_data["defects_by_cat"]              # {1: n, 2: n, 3: n, 4: n, 5: n}
+report_data["defects_by_cat"]              # {1: n, 2: n, ...} — NOTE: may use 1-5 scale from old sample data
 report_data["critical_count"]
 report_data["critical_findings"]           # top 5 defects (Cat 4+)
-report_data["triage_stats"]               # {"total", "flagged", "clean", "flag_rate"}
+report_data["triage_stats"]               # {"total", "flagged", "clean", "flag_rate"} or None
 
 # Defect Findings by Blade:
 report_data["blades_sorted"]              # ["A", "B", "C"]
 report_data["blade_findings"]["A"]        # list of defect dicts, sorted by -category
-# Each defect has: defect_id, defect_name, category (IEC), urgency, zone, position,
-#                  size_estimate, confidence, visual_description, ndt_recommended,
-#                  image_path, severity_style, analysis (may be None)
-
-# Analysis fields per defect (if present):
-defect["analysis"]["root_cause"]
-defect["analysis"]["recommended_action"]
-defect["analysis"]["repair_timeframe"]
-defect["analysis"]["estimated_cost_usd"]
-defect["analysis"]["engineer_review_required"]
-defect["analysis"]["failure_risk"]["safety_risk"]
+# Each defect dict:
+# "defect_id", "defect_name", "category" (IEC 0-4 after normalization),
+# "urgency", "zone", "position", "size_estimate", "confidence",
+# "visual_description", "ndt_recommended", "image_path" (thumbnail after Plan 02),
+# "severity_style" (old 1-5 based — don't use for fpdf2 rendering, use SEVERITY_COLORS_IEC instead),
+# "analysis" (dict or None)
 
 # Action Matrix:
-report_data["action_matrix"]  # [{priority, action, blade, defect_id, defect_name, category, urgency, zone, timeframe}]
+report_data["action_matrix"]
+# Each item: {priority, action, blade, defect_id, defect_name, category, urgency, zone, timeframe}
 
 # Blade Map:
-report_data["blade_findings"]["A"]  # defects have zone + position for grid placement
+# Use blade_findings[blade] — each defect has zone + position for grid placement
 
 # Inspection Details:
 report_data["turbine"]  # all turbine meta fields
@@ -646,9 +728,14 @@ report_data["generated_at"]
 report_data["engineer_review_count"]
 ```
 
-### CRITICAL: Category Field Naming Inconsistency
+### Category Field Naming: THE FULL PICTURE
 
-The `blade_findings` defect objects have a field called `category` (not `iec_category`). This is set in `build_report_data()` directly from classify_data which stores `iec_category`. Verify: `defect["category"]` in blade_findings maps to IEC 0-4 scale. The old `SEVERITY_COLORS` keys (1-5) will NOT match. Use the new `SEVERITY_COLORS_IEC` keyed 0-4.
+- `classify.py` `DefectFinding` stores: `iec_category: int` (0-4)
+- `classify.py` `save_classify_results()` saves: `{"iec_category": d.iec_category, ...}` (no "category" key)
+- `build_report_data()` reads: `d["category"]` — this FAILS on real pipeline data
+- `make_sample_classify_data()` in report.py stores: `{"category": 3, ...}` — this works but masks the bug
+- **Fix:** `d.setdefault("category", d.get("iec_category", 0))` after building `all_defects` list
+- **Result after fix:** `defect["category"]` reliably contains IEC 0-4 for all defects in report_data
 
 ---
 
@@ -659,12 +746,13 @@ The `blade_findings` defect objects have a field called `category` (not `iec_cat
 | xhtml2pdf HTML → PDF | fpdf2 direct construction | No system deps; works on Render |
 | WeasyPrint for quality | fpdf2 native | No GTK/Pango needed |
 | Jinja2 HTML templates | Direct Python cell/rect calls | No template files needed |
-| SEVERITY_COLORS keyed 1-5 | New SEVERITY_COLORS_IEC keyed 0-4 | Aligns with IEC standard |
+| SEVERITY_COLORS keyed 1-5 | SEVERITY_COLORS_IEC keyed 0-4 | Aligns with IEC standard |
+| fpdf2 2.8.4 (prev research) | fpdf2 2.8.7 (current PyPI) | Same API; minor bugfixes only |
 
-**Deprecated/outdated:**
+**Deprecated/outdated (to delete):**
 - `render_html()`: delete entirely
 - `generate_pdf()`: replace with `generate_pdf_fpdf2()`
-- `build_report()` (full pipeline wrapper): update to call new function
+- `build_report()` wrapper: update to call new function
 - `templates/report.html`: delete
 - `templates/report.css`: delete
 
@@ -672,60 +760,54 @@ The `blade_findings` defect objects have a field called `category` (not `iec_cat
 
 ## Open Questions
 
-1. **Do classified image files survive post-triage deletion?**
-   - What we know: `api.py` deletes raw uploaded images (15-30MB DJI P1 files) after triage to save disk space
-   - What's unclear: Whether the JPEG copies created during classify stage (stored in job dir) are also deleted
-   - Recommendation: Read `api.py` image deletion logic before implementing. If classified images are deleted, the thumbnail strategy changes: embed tile images from triage stage instead.
+1. **TOC implementation — insert_toc_placeholder() vs pre-calculated**
+   - What we know: `insert_toc_placeholder(render_fn, pages=1)` confirmed in 2.8.7; uses `start_section()` calls to register entries during rendering; library handles page number injection automatically
+   - Recommendation: Use `insert_toc_placeholder()` with a custom render function. It's cleaner than pre-calculation and confirmed available. The `start_section(name)` call should be placed at the start of each major section render function.
 
-2. **TOC implementation — `insert_toc_placeholder()` availability**
-   - What we know: fpdf2 2.8.x has some TOC support; pre-calculation is the safe fallback
-   - What's unclear: Exact API for `insert_toc_placeholder()` in 2.8.4
-   - Recommendation: Use pre-calculated page_map approach (deterministic, 1 defect/page). Avoid complex TOC API for Phase 4.
+2. **Brand colour palette — exact RGB values**
+   - What we know: "AI-selected — professional wind energy / high-tech palette" per CONTEXT.md
+   - Recommendation: Use `BRAND_NAVY = (15, 50, 90)`, `BRAND_STEEL = (0, 100, 160)`, `BRAND_LIGHT = (220, 235, 248)` as shown in code examples. These are easily adjustable.
 
-3. **Brand colour palette — exact RGB values**
-   - What we know: "AI-selected — professional wind energy / high-tech palette" (CONTEXT.md)
-   - What's unclear: Who selects the palette — will be chosen during implementation
-   - Recommendation: Use professional dark navy + steel blue + light grey palette (shown in code examples above). Can be adjusted without structural changes.
-
-4. **Font choice — Inter vs Exo 2**
-   - What we know: CONTEXT.md says "Inter, Exo 2, or similar clean sans-serif"
-   - What's unclear: Final font selection
-   - Recommendation: Use Inter (most professional, free, widely used in tech reports). Download 3 static TTF files (Regular, Bold, Italic) from Google Fonts.
+3. **Font fallback behaviour on Render if TTF not committed**
+   - Recommendation: Implement explicit fallback to Helvetica in `_register_fonts()` with a warning print. This prevents hard failure during deployment. But TTF files MUST be committed to git before Render deploy.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- https://py-pdf.github.io/fpdf2/Tutorial.html — header/footer pattern, basic API
-- https://py-pdf.github.io/fpdf2/Unicode.html — add_font() signature, TTF embedding
-- https://py-pdf.github.io/fpdf2/Tables.html — table() context manager, FontFace, col_widths
-- https://py-pdf.github.io/fpdf2/Images.html — image() method, PIL integration, positioning
-- https://py-pdf.github.io/fpdf2/Shapes.html — rect(), line(), circle() with style parameter
-- https://py-pdf.github.io/fpdf2/PageBreaks.html — will_page_break(), add_page(), set_auto_page_break()
-- https://py-pdf.github.io/fpdf2/UsageInWebAPI.html — output() bytes, FastAPI integration
-- PyPI: fpdf2 2.8.4 — verified as current stable release
-- Codebase: `backend/report.py` — build_report_data() structure fully audited
-- Codebase: `backend/classify.py` — ClassifyResult, DefectFinding, iec_category field names
-- Codebase: `backend/analyze.py` — DeepAnalysis fields for analysis section
+- https://py-pdf.github.io/fpdf2/DocumentOutlineAndTableOfContents.html — insert_toc_placeholder() signature, TableOfContents class, start_section() API (verified 2026-03-08)
+- https://py-pdf.github.io/fpdf2/Shapes.html — circle(x, y, radius) center coords confirmed (verified 2026-03-08)
+- https://py-pdf.github.io/fpdf2/Images.html — image() method, PIL integration, file path and BytesIO acceptance (verified 2026-03-08)
+- https://py-pdf.github.io/fpdf2/fpdf/fpdf.html#fpdf.fpdf.FPDF.circle — exact circle() signature and coordinate system (verified 2026-03-08)
+- PyPI: fpdf2 2.8.7 — current stable release (verified 2026-03-08 via PyPI JSON API)
+- Codebase: `backend/api.py` lines 241-243 — image deletion confirmed
+- Codebase: `backend/classify.py` `save_classify_results()` — iec_category key naming confirmed
+- Codebase: `backend/report.py` `build_report_data()` — d["category"] mismatch with real pipeline data confirmed
 - `.planning/phases/04-pdf-redesign/04-CONTEXT.md` — all user decisions
 
 ### Secondary (MEDIUM confidence)
-- https://py-pdf.github.io/fpdf2/ — general feature overview
-- WebSearch results confirming fpdf2 image() accepts BytesIO and PIL objects
+- https://py-pdf.github.io/fpdf2/ — general feature overview; individual pages 404ed in this session but main content accessible
+- Existing plan files (04-01, 04-02, 04-03 PLAN.md) — confirm 3-plan structure is appropriate
+- Previous RESEARCH.md (2026-03-07) — confirmed most findings, corrected circle() coordinate bug
 
 ### Tertiary (LOW confidence)
-- insert_toc_placeholder() availability in 2.8.4 — mentioned in docs but not verified against exact 2.8.4 changelog. Treat as unconfirmed; use pre-calculated page_map instead.
+- None remaining — all critical claims verified from primary sources
 
 ---
 
 ## Metadata
 
 **Confidence breakdown:**
-- Standard stack: HIGH — fpdf2 2.8.4 confirmed on PyPI; Pillow already in requirements.txt; verified from official docs
-- Architecture: HIGH — FPDF subclass pattern confirmed from tutorial; all code examples derived from verified API signatures
-- Pitfalls: HIGH for colour mismatch (verified from codebase category field analysis); MEDIUM for image availability (requires api.py review)
-- Blade map: MEDIUM — shapes API verified; coordinate strategy is straightforward but untested
+- Standard stack: HIGH — fpdf2 2.8.7 confirmed on PyPI; API verified from official docs
+- Architecture: HIGH — FPDF subclass pattern confirmed; insert_toc_placeholder() confirmed; circle() coordinate system confirmed (correcting previous research bug)
+- Pitfalls: HIGH for colour mismatch (verified from codebase key analysis); HIGH for image deletion (confirmed from api.py); HIGH for circle() bug (confirmed from API docs)
+- Blade map: HIGH — shapes API verified; circle() center coords confirmed; coordinate math straightforward
 
-**Research date:** 2026-03-07
-**Valid until:** 2026-06-07 (fpdf2 API is stable; only at risk if major version bump)
+**Key correction vs previous research (2026-03-07):**
+- circle() coordinates: previous research showed `x=cx - 3, y=cy - 3` — this is WRONG. Correct: `x=cx, y=cy` (center coordinates)
+- fpdf2 version: 2.8.4 → 2.8.7 (same API, no breaking changes)
+- insert_toc_placeholder(): previously marked "LOW confidence, unconfirmed" — now HIGH confidence, confirmed available with full API
+
+**Research date:** 2026-03-08
+**Valid until:** 2026-06-08 (fpdf2 API is stable; only at risk if major version bump)
