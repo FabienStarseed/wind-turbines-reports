@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from PIL import Image
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -237,6 +238,24 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         running_cost += triage_cost
         update_job(job_id, flagged_images=summary.flagged_images, triage_cost_usd=triage_cost)
 
+        # Save thumbnail copies of flagged images before deleting originals.
+        # These survive for classify stage and PDF report embedding (PDF-03).
+        # Max 80 flagged images × ~150KB each = ~12MB — well within 1GB disk budget.
+        thumbnails_dir = job_dir / "thumbnails"
+        thumbnails_dir.mkdir(exist_ok=True)
+        flagged_paths = {str(r.image_path) for r in summary.results if r.has_defect}
+        for orig_path_str in flagged_paths:
+            orig_path = Path(orig_path_str)
+            if orig_path.exists():
+                thumb_path = thumbnails_dir / orig_path.name
+                try:
+                    with Image.open(orig_path) as img:
+                        img.thumbnail((1568, 1568), Image.LANCZOS)
+                        img.convert("RGB").save(str(thumb_path), "JPEG", quality=85)
+                except Exception:
+                    # If thumbnail creation fails, copy original (better than nothing)
+                    shutil.copy2(str(orig_path), str(thumb_path))
+
         # Delete uploaded images after triage — they are 15-30MB each and not needed
         images_dir = job_dir / "images"
         if images_dir.exists():
@@ -251,6 +270,13 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
             {**vars(r), "path": str(r.image_path), "location_type": turbine_meta.get("location_type", "onshore")}
             for r in summary.results if r.has_defect
         ]
+        # Update flagged image paths to point to thumbnail copies (originals now deleted).
+        # Classify stage and PDF report read from these thumbnail paths.
+        for f in flagged:
+            orig_name = Path(f["path"]).name
+            thumb = thumbnails_dir / orig_name
+            if thumb.exists():
+                f["path"] = str(thumb)
 
         set_stage(job_id, "classifying", f"Classifying {len(flagged)} flagged images...")
 
