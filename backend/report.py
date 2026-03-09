@@ -401,122 +401,640 @@ def _draw_placeholder(pdf: "BDDAReport", x: float, y: float, w: float, h: float)
 
 
 def _draw_isometric_turbine(pdf: "BDDAReport", cx: float, cy: float, scale: float = 1.0):
-    """Draw a simplified isometric wind turbine in white line art with lime green accents.
-    cx, cy = center base of tower. scale = size multiplier.
-    Matches the 'diagram of production of wind energy' reference illustration style.
+    """Draw a professional isometric wind turbine diagram in CAD-style line art.
+
+    cx, cy = center base of tower on ground level. scale = size multiplier.
+    Designed for dark (#07131D) backgrounds with white/grey line work and
+    lime green (#A8CB1A) accents for energy flow only.
     """
-    # — Tower (vertical rectangle, white outline) —
-    tw = 4 * scale    # tower width
-    th = 55 * scale   # tower height
-    tx = cx - tw / 2
-    ty = cy - th
+    s = scale  # shorthand
 
+    # ── Helper: draw a filled polygon from a list of (x, y) tuples ──
+    def _poly_fill(pts, r, g, b):
+        """Fill a polygon using lines — fpdf2 has no polygon fill, so we
+        draw the outline then use rect slices for simple convex shapes.
+        For this diagram we use line-art, so fill is rarely needed."""
+        pdf.set_draw_color(r, g, b)
+        for i in range(len(pts)):
+            x1, y1 = pts[i]
+            x2, y2 = pts[(i + 1) % len(pts)]
+            pdf.line(x1, y1, x2, y2)
+
+    def _dashed_line(x1, y1, x2, y2, dash=1.5, gap=1.2):
+        """Draw a dashed line between two points."""
+        dx = x2 - x1
+        dy = y2 - y1
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 0.1:
+            return
+        ux, uy = dx / length, dy / length
+        drawn = 0.0
+        while drawn < length:
+            seg_end = min(drawn + dash, length)
+            pdf.line(x1 + ux * drawn, y1 + uy * drawn,
+                     x1 + ux * seg_end, y1 + uy * seg_end)
+            drawn = seg_end + gap
+
+    def _curved_arrow(x_start, y_center, arrow_len, amplitude=1.5, segments=20):
+        """Draw a wavy arrow (sinusoidal) from left to right."""
+        pts = []
+        for i in range(segments + 1):
+            t = i / segments
+            ax = x_start + arrow_len * t
+            ay = y_center + amplitude * math.sin(t * math.pi * 2.5)
+            pts.append((ax, ay))
+        for i in range(len(pts) - 1):
+            pdf.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+        # Arrowhead at end
+        ex, ey = pts[-1]
+        ah = 2.0 * s
+        pdf.line(ex, ey, ex - ah, ey - ah * 0.6)
+        pdf.line(ex, ey, ex - ah, ey + ah * 0.6)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # COORDINATE ANCHORS
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    tower_h = 58 * s          # total tower height
+    tower_w_base = 7 * s      # width at ground
+    tower_w_top = 3.2 * s     # width at nacelle
+    tower_top_y = cy - tower_h
+
+    # Hub center (front of nacelle)
+    hub_x = cx - 6 * s
+    hub_y = tower_top_y - 1.5 * s
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 1. FOUNDATION (below ground)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    found_depth = 6 * s
+    found_width = 16 * s
+
+    # Foundation pad outline
+    pdf.set_draw_color(60, 65, 90)
+    pdf.set_line_width(0.3)
+    fl = cx - found_width / 2
+    fr = cx + found_width / 2
+    fb = cy + found_depth
+    pdf.line(fl, cy, fl, fb)           # left side
+    pdf.line(fr, cy, fr, fb)           # right side
+    pdf.line(fl, fb, fr, fb)           # bottom
+    # Hatching inside foundation
+    pdf.set_line_width(0.15)
+    pdf.set_draw_color(45, 50, 75)
+    hatch_step = 2.2 * s
+    hatch_y = cy + 0.8
+    while hatch_y < fb - 0.5:
+        pdf.line(fl + 0.5, hatch_y, fr - 0.5, hatch_y)
+        hatch_y += hatch_step
+    # Diagonal cross-hatching
+    for i in range(int(found_width / (1.8 * s)) + 2):
+        hx_start = fl + i * 1.8 * s
+        if hx_start < fr:
+            pdf.line(hx_start, cy + 0.5, min(hx_start + found_depth * 0.7, fr - 0.3), fb - 0.5)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 2. GROUND TERRAIN (rolling hills + grass tufts)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    pdf.set_draw_color(80, 85, 105)
+    pdf.set_line_width(0.35)
+
+    # Rolling terrain — segmented gentle curves
+    terrain_left = cx - 52 * s
+    terrain_right = cx + 58 * s
+    terrain_segments = 40
+    seg_w = (terrain_right - terrain_left) / terrain_segments
+    prev_x = terrain_left
+    prev_y = cy + 0.8 * math.sin(0.1 * terrain_left * s) * s
+    for i in range(1, terrain_segments + 1):
+        seg_x = terrain_left + i * seg_w
+        # Gentle sine wave with two frequencies for natural look
+        seg_y = cy + (0.6 * math.sin(0.08 * seg_x) + 0.3 * math.sin(0.18 * seg_x + 1.2)) * s
+        pdf.line(prev_x, prev_y, seg_x, seg_y)
+        prev_x, prev_y = seg_x, seg_y
+
+    # Grass tufts — small V shapes scattered along ground
+    pdf.set_draw_color(65, 75, 90)
+    pdf.set_line_width(0.2)
+    grass_positions = [
+        cx - 44 * s, cx - 38 * s, cx - 28 * s, cx - 18 * s,
+        cx + 14 * s, cx + 20 * s, cx + 28 * s, cx + 42 * s, cx + 50 * s,
+    ]
+    for gx in grass_positions:
+        gy = cy + (0.6 * math.sin(0.08 * gx) + 0.3 * math.sin(0.18 * gx + 1.2)) * s
+        gh = (1.2 + 0.6 * abs(math.sin(gx * 0.3))) * s
+        pdf.line(gx - 0.4 * s, gy, gx, gy - gh)
+        pdf.line(gx + 0.4 * s, gy, gx, gy - gh * 0.85)
+        pdf.line(gx + 0.8 * s, gy, gx + 0.5 * s, gy - gh * 0.65)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 3. TOWER (tapered trapezoid with structural section lines)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Tower corners: wider at base, narrower at top
+    tl_bl = cx - tower_w_base / 2   # tower left at base
+    tl_br = cx + tower_w_base / 2   # tower right at base
+    tl_tl = cx - tower_w_top / 2    # tower left at top
+    tl_tr = cx + tower_w_top / 2    # tower right at top
+
+    # Main tower outline — white lines
     pdf.set_draw_color(*BRAND_WHITE)
-    pdf.set_fill_color(*BRAND_SLATE)
+    pdf.set_line_width(0.45)
+    pdf.line(tl_bl, cy, tl_tl, tower_top_y)     # left edge
+    pdf.line(tl_br, cy, tl_tr, tower_top_y)     # right edge
+    pdf.line(tl_bl, cy, tl_br, cy)               # base
+    pdf.line(tl_tl, tower_top_y, tl_tr, tower_top_y)  # top
+
+    # Section lines across tower (horizontal structural bands)
+    pdf.set_draw_color(140, 145, 165)
+    pdf.set_line_width(0.15)
+    num_sections = 8
+    for i in range(1, num_sections):
+        t = i / num_sections
+        sec_y = cy - tower_h * t
+        sec_left = cx - (tower_w_base / 2 + (tower_w_top / 2 - tower_w_base / 2) * t)
+        sec_right = cx + (tower_w_base / 2 + (tower_w_top / 2 - tower_w_base / 2) * t)
+        pdf.line(sec_left, sec_y, sec_right, sec_y)
+
+    # Door at tower base
+    pdf.set_draw_color(120, 125, 145)
+    pdf.set_line_width(0.2)
+    door_w = 1.6 * s
+    door_h = 3.5 * s
+    pdf.rect(cx - door_w / 2, cy - door_h, door_w, door_h, style="D")
+
+    # Vertical center line (subtle structural detail)
+    pdf.set_draw_color(60, 65, 85)
+    pdf.set_line_width(0.1)
+    _dashed_line(cx, cy - door_h, cx, tower_top_y + 2 * s, dash=1.0, gap=2.0)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 4. NACELLE (elongated housing with panel detail)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    nac_len = 14 * s       # length of nacelle
+    nac_h = 4.5 * s        # height
+    nac_rear_x = cx + 5 * s     # rear of nacelle (behind tower center)
+    nac_front_x = nac_rear_x - nac_len
+    nac_top = tower_top_y - nac_h - 0.5 * s
+    nac_bot = tower_top_y - 0.5 * s
+
+    # Main nacelle body — slightly rounded by using segmented top
+    pdf.set_draw_color(*BRAND_WHITE)
     pdf.set_line_width(0.4)
-    pdf.rect(tx, ty, tw, th, style="FD")
+    # Bottom edge
+    pdf.line(nac_front_x + 1.5 * s, nac_bot, nac_rear_x, nac_bot)
+    # Rear edge (flat vertical)
+    pdf.line(nac_rear_x, nac_bot, nac_rear_x, nac_top + 1.0 * s)
+    # Top-rear curve (2 segments)
+    pdf.line(nac_rear_x, nac_top + 1.0 * s, nac_rear_x - 1.0 * s, nac_top)
+    pdf.line(nac_rear_x - 1.0 * s, nac_top, nac_front_x + 4 * s, nac_top)
+    # Top-front slope down to hub area
+    pdf.line(nac_front_x + 4 * s, nac_top, nac_front_x + 1.5 * s, nac_top + 1.2 * s)
+    # Front face (angled toward hub)
+    pdf.line(nac_front_x + 1.5 * s, nac_top + 1.2 * s, nac_front_x + 1.5 * s, nac_bot)
 
-    # — Nacelle (box at top of tower) —
-    nw = 12 * scale
-    nh = 6 * scale
-    nx = cx - nw / 2
-    ny = ty - nh
-    pdf.set_fill_color(*BRAND_SLATE)
-    pdf.rect(nx, ny, nw, nh, style="FD")
+    # Panel lines on nacelle
+    pdf.set_draw_color(100, 105, 125)
+    pdf.set_line_width(0.15)
+    for panel_frac in [0.35, 0.55, 0.75]:
+        px_line = nac_front_x + 1.5 * s + (nac_rear_x - nac_front_x - 1.5 * s) * panel_frac
+        pdf.line(px_line, nac_top + 0.3, px_line, nac_bot - 0.3)
 
-    # — Hub (small circle at nacelle front) —
-    hx = nx
-    hy = ny + nh / 2
-    pdf.set_fill_color(*BRAND_PRIMARY)
-    pdf.circle(x=hx, y=hy, radius=2 * scale, style="FD")
+    # Exhaust vents on rear — small horizontal slits
+    pdf.set_draw_color(90, 95, 115)
+    pdf.set_line_width(0.15)
+    vent_x = nac_rear_x - 0.3
+    for vi in range(3):
+        vy = nac_top + 1.5 * s + vi * 0.9 * s
+        pdf.line(vent_x - 1.5 * s, vy, vent_x, vy)
 
-    # — 3 Rotor blades (simplified: lines at 0°, 120°, 240°) —
-    blade_len = 28 * scale
+    # Anemometer on top (small mast + circle)
+    anem_x = nac_rear_x - 3 * s
+    anem_base = nac_top
+    anem_top = anem_base - 2.8 * s
+    pdf.set_draw_color(160, 165, 180)
+    pdf.set_line_width(0.2)
+    pdf.line(anem_x, anem_base, anem_x, anem_top)
     pdf.set_draw_color(*BRAND_WHITE)
-    pdf.set_line_width(0.8 * scale)
+    pdf.circle(x=anem_x, y=anem_top, radius=0.5 * s, style="D")
+    # Small cross on anemometer
+    pdf.set_line_width(0.15)
+    cr = 0.5 * s
+    pdf.line(anem_x - cr, anem_top, anem_x + cr, anem_top)
+    pdf.line(anem_x, anem_top - cr, anem_x, anem_top + cr)
+
+    # Aviation warning light on nacelle
+    pdf.set_fill_color(*BRAND_RED)
+    pdf.circle(x=nac_rear_x - 1.0 * s, y=nac_top - 0.2, radius=0.4 * s, style="F")
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 5. HUB / NOSE CONE (pointed spinner)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    hub_r = 2.0 * s           # hub circle radius
+    nose_len = 3.5 * s        # nose cone protrusion
+
+    # Nose cone — pointed shape (triangle pointing left from hub)
+    pdf.set_draw_color(*BRAND_WHITE)
+    pdf.set_line_width(0.35)
+    nose_tip_x = hub_x - nose_len
+    pdf.line(nose_tip_x, hub_y, hub_x, hub_y - hub_r)   # top edge of nose
+    pdf.line(nose_tip_x, hub_y, hub_x, hub_y + hub_r)   # bottom edge of nose
+
+    # Hub circle (back plate)
+    pdf.set_draw_color(*BRAND_WHITE)
+    pdf.set_line_width(0.35)
+    pdf.circle(x=hub_x, y=hub_y, radius=hub_r, style="D")
+    # Hub center dot
+    pdf.set_fill_color(*BRAND_PRIMARY)
+    pdf.circle(x=hub_x, y=hub_y, radius=0.5 * s, style="F")
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 6. ROTOR BLADES (tapered airfoil shapes, 3 blades at 90/210/330 degrees)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    blade_len = 30 * s
+    blade_root_w = 2.0 * s    # width at root (hub end)
+    blade_tip_w = 0.3 * s     # width at tip
+
+    pdf.set_draw_color(*BRAND_WHITE)
+    pdf.set_line_width(0.3)
+
     for angle_deg in [90, 210, 330]:
         angle = math.radians(angle_deg)
-        bx2 = hx + blade_len * math.cos(angle)
-        by2 = hy + blade_len * math.sin(angle)
-        pdf.line(hx, hy, bx2, by2)
+        # Perpendicular direction for blade width
+        perp = angle + math.pi / 2
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        cos_p = math.cos(perp)
+        sin_p = math.sin(perp)
 
-    # — Power cable (lime green, goes down tower to transformer) —
+        # Build tapered blade outline with slight curve
+        blade_segments = 12
+        left_edge = []
+        right_edge = []
+
+        for i in range(blade_segments + 1):
+            t = i / blade_segments
+            # Distance along blade
+            dist = blade_len * t
+            # Width tapers from root to tip (with slight bulge near 20%)
+            bulge = 1.0 + 0.15 * math.sin(t * math.pi * 0.8)
+            w = (blade_root_w * (1 - t) + blade_tip_w * t) * bulge
+            # Slight airfoil curve — offset center line
+            curve_offset = 0.4 * s * math.sin(t * math.pi) * (1 - t)
+
+            pt_x = hub_x + cos_a * dist + cos_p * curve_offset
+            pt_y = hub_y + sin_a * dist + sin_p * curve_offset
+
+            left_edge.append((pt_x + cos_p * w / 2, pt_y + sin_p * w / 2))
+            right_edge.append((pt_x - cos_p * w / 2, pt_y - sin_p * w / 2))
+
+        # Draw leading edge (left)
+        for i in range(len(left_edge) - 1):
+            pdf.line(left_edge[i][0], left_edge[i][1],
+                     left_edge[i + 1][0], left_edge[i + 1][1])
+        # Draw trailing edge (right)
+        for i in range(len(right_edge) - 1):
+            pdf.line(right_edge[i][0], right_edge[i][1],
+                     right_edge[i + 1][0], right_edge[i + 1][1])
+        # Close tip
+        pdf.line(left_edge[-1][0], left_edge[-1][1],
+                 right_edge[-1][0], right_edge[-1][1])
+        # Close root (connects to hub)
+        pdf.line(left_edge[0][0], left_edge[0][1],
+                 right_edge[0][0], right_edge[0][1])
+
+        # Center spar line (structural detail inside blade)
+        pdf.set_draw_color(100, 105, 130)
+        pdf.set_line_width(0.1)
+        for i in range(blade_segments):
+            t1 = i / blade_segments
+            t2 = (i + 1) / blade_segments
+            d1 = blade_len * t1
+            d2 = blade_len * t2
+            c1 = 0.4 * s * math.sin(t1 * math.pi) * (1 - t1)
+            c2 = 0.4 * s * math.sin(t2 * math.pi) * (1 - t2)
+            sx1 = hub_x + cos_a * d1 + cos_p * c1
+            sy1 = hub_y + sin_a * d1 + sin_p * c1
+            sx2 = hub_x + cos_a * d2 + cos_p * c2
+            sy2 = hub_y + sin_a * d2 + sin_p * c2
+            pdf.line(sx1, sy1, sx2, sy2)
+        # Reset for next blade
+        pdf.set_draw_color(*BRAND_WHITE)
+        pdf.set_line_width(0.3)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 7. POWER CABLE (internal tower cable — lime green dashed)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     pdf.set_draw_color(*BRAND_PRIMARY)
-    pdf.set_line_width(0.6)
-    cable_x = cx + 1
-    pdf.line(cable_x, ty + th, cable_x, cy + 8 * scale)  # down tower
+    pdf.set_line_width(0.4)
+    cable_x = cx + 0.8 * s
+    _dashed_line(cable_x, tower_top_y + 2 * s, cable_x, cy - 1 * s, dash=2.0, gap=1.5)
 
-    # Ground line
-    pdf.set_draw_color(*BRAND_GREY)
-    pdf.set_line_width(0.3)
-    pdf.line(cx - 50 * scale, cy, cx + 60 * scale, cy)
+    # Underground cable (from foundation to transformer)
+    cable_underground_y = cy + 3 * s
+    pdf.set_line_width(0.35)
+    _dashed_line(cable_x, cy, cable_x, cable_underground_y, dash=1.5, gap=1.0)
 
-    # — Transformer box (lime fill) —
-    trf_x = cx + 12 * scale
-    trf_y = cy - 8 * scale
-    trf_w = 10 * scale
-    trf_h = 8 * scale
-    pdf.set_fill_color(*BRAND_PRIMARY)
-    pdf.set_draw_color(*BRAND_DARK)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 8. TRANSFORMER (detailed with insulators)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    trf_x = cx + 14 * s
+    trf_y = cy - 7 * s
+    trf_w = 9 * s
+    trf_h = 7 * s
+
+    # Transformer body
+    pdf.set_draw_color(*BRAND_WHITE)
+    pdf.set_fill_color(35, 42, 70)
     pdf.set_line_width(0.3)
     pdf.rect(trf_x, trf_y, trf_w, trf_h, style="FD")
 
-    # Horizontal cable to transformer
-    pdf.set_draw_color(*BRAND_PRIMARY)
-    pdf.set_line_width(0.6)
-    pdf.line(cable_x, cy + 8 * scale - 4 * scale, trf_x, trf_y + trf_h / 2)
+    # Panel line in center
+    pdf.set_draw_color(80, 85, 110)
+    pdf.set_line_width(0.15)
+    pdf.line(trf_x + trf_w / 2, trf_y + 0.5, trf_x + trf_w / 2, trf_y + trf_h - 0.5)
 
-    # Lime arrow from transformer (→ consumer/grid)
-    arr_x1 = trf_x + trf_w
-    arr_y = trf_y + trf_h / 2
-    arr_x2 = arr_x1 + 14 * scale
-    pdf.line(arr_x1, arr_y, arr_x2, arr_y)
-    # Arrowhead
-    pdf.line(arr_x2, arr_y, arr_x2 - 3 * scale, arr_y - 2 * scale)
-    pdf.line(arr_x2, arr_y, arr_x2 - 3 * scale, arr_y + 2 * scale)
+    # Cooling fins (horizontal lines on body)
+    for fi in range(3):
+        fy = trf_y + 1.5 * s + fi * 1.5 * s
+        pdf.line(trf_x + 0.8, fy, trf_x + trf_w / 2 - 0.5, fy)
 
-    # — Wind arrows (left side, wavy lines) —
-    pdf.set_draw_color(*BRAND_PRIMARY)
-    pdf.set_line_width(0.5)
-    for i, wind_y in enumerate([hy - 8 * scale, hy, hy + 8 * scale]):
-        wx1 = hx - 30 * scale
-        wx2 = hx - 8 * scale
-        # Simple horizontal arrow
-        pdf.line(wx1, wind_y, wx2, wind_y)
-        pdf.line(wx2, wind_y, wx2 - 3 * scale, wind_y - 2 * scale)
-        pdf.line(wx2, wind_y, wx2 - 3 * scale, wind_y + 2 * scale)
-
-    # — Simple tree silhouettes (white line art) —
+    # HV Insulators on top (3 small stacked circles)
     pdf.set_draw_color(*BRAND_WHITE)
-    pdf.set_line_width(0.3)
-    for i, tree_cx in enumerate([cx - 40 * scale, cx - 32 * scale,
-                                  cx + 35 * scale, cx + 45 * scale]):
-        tree_h = (10 + i % 2 * 3) * scale
-        tree_w = 5 * scale
-        tree_base = cy
-        # Triangle tree
-        pdf.line(tree_cx, tree_base, tree_cx, tree_base - tree_h)
-        pdf.line(tree_cx - tree_w / 2, tree_base, tree_cx, tree_base - tree_h)
-        pdf.line(tree_cx + tree_w / 2, tree_base, tree_cx, tree_base - tree_h)
+    pdf.set_line_width(0.2)
+    for ins_i in range(3):
+        ins_x = trf_x + 1.8 * s + ins_i * 2.5 * s
+        ins_base = trf_y
+        # Insulator post
+        pdf.line(ins_x, ins_base, ins_x, ins_base - 2.5 * s)
+        # Insulator discs (2 small circles)
+        pdf.circle(x=ins_x, y=ins_base - 1.2 * s, radius=0.6 * s, style="D")
+        pdf.circle(x=ins_x, y=ins_base - 2.0 * s, radius=0.5 * s, style="D")
+        # Top contact ball
+        pdf.set_fill_color(*BRAND_PRIMARY)
+        pdf.circle(x=ins_x, y=ins_base - 2.5 * s, radius=0.3 * s, style="F")
 
-    # Reset line width
+    # Underground cable from tower base to transformer
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.35)
+    _dashed_line(cable_x, cable_underground_y, trf_x, trf_y + trf_h - 1, dash=1.5, gap=1.0)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 9. POWER LINES + PYLON (transmission to grid)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    pylon_x = cx + 42 * s
+    pylon_base_y = cy
+    pylon_top_y = cy - 18 * s
+
+    # Pylon structure (lattice tower shape)
+    pdf.set_draw_color(140, 145, 165)
+    pdf.set_line_width(0.25)
+    pyl_w_base = 3.5 * s
+    pyl_w_top = 1.2 * s
+
+    # Main legs
+    pdf.line(pylon_x - pyl_w_base / 2, pylon_base_y,
+             pylon_x - pyl_w_top / 2, pylon_top_y)
+    pdf.line(pylon_x + pyl_w_base / 2, pylon_base_y,
+             pylon_x + pyl_w_top / 2, pylon_top_y)
+
+    # Cross braces (X pattern)
+    pdf.set_line_width(0.12)
+    num_braces = 5
+    for bi in range(num_braces):
+        t1 = bi / num_braces
+        t2 = (bi + 1) / num_braces
+        by1 = pylon_base_y - (pylon_base_y - pylon_top_y) * t1
+        by2 = pylon_base_y - (pylon_base_y - pylon_top_y) * t2
+        bx1_l = pylon_x - (pyl_w_base / 2 + (pyl_w_top / 2 - pyl_w_base / 2) * t1)
+        bx1_r = pylon_x + (pyl_w_base / 2 + (pyl_w_top / 2 - pyl_w_base / 2) * t1)
+        bx2_l = pylon_x - (pyl_w_base / 2 + (pyl_w_top / 2 - pyl_w_base / 2) * t2)
+        bx2_r = pylon_x + (pyl_w_base / 2 + (pyl_w_top / 2 - pyl_w_base / 2) * t2)
+        # X brace
+        pdf.line(bx1_l, by1, bx2_r, by2)
+        pdf.line(bx1_r, by1, bx2_l, by2)
+
+    # Pylon cross-arms (horizontal bars at top)
+    arm_w = 4 * s
+    pdf.set_line_width(0.2)
+    for arm_y in [pylon_top_y, pylon_top_y + 3 * s]:
+        pdf.line(pylon_x - arm_w, arm_y, pylon_x + arm_w, arm_y)
+        # Insulator hangs
+        for side in [-1, 1]:
+            ix = pylon_x + side * (arm_w - 0.5 * s)
+            pdf.line(ix, arm_y, ix, arm_y + 1.2 * s)
+
+    # Power lines from transformer to pylon
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.25)
+    line_start_x = trf_x + trf_w
+    line_start_y = trf_y + 1.5 * s
+
+    # Sagging catenary lines (2 wires)
+    for wire_offset in [0, 2.5 * s]:
+        wire_y_start = line_start_y + wire_offset
+        wire_y_end = pylon_top_y + wire_offset + 0.5 * s
+        segments = 15
+        for wi in range(segments):
+            t1 = wi / segments
+            t2 = (wi + 1) / segments
+            wx1 = line_start_x + (pylon_x - line_start_x) * t1
+            wx2 = line_start_x + (pylon_x - line_start_x) * t2
+            # Catenary sag
+            sag1 = 2.5 * s * math.sin(t1 * math.pi)
+            sag2 = 2.5 * s * math.sin(t2 * math.pi)
+            wy1 = wire_y_start + (wire_y_end - wire_y_start) * t1 + sag1
+            wy2 = wire_y_start + (wire_y_end - wire_y_start) * t2 + sag2
+            pdf.line(wx1, wy1, wx2, wy2)
+
+    # Lines continuing past pylon to the right (to grid)
+    pdf.set_line_width(0.2)
+    exit_x = pylon_x + 12 * s
+    for wire_offset in [0, 2.5 * s]:
+        py_line = pylon_top_y + wire_offset + 0.5 * s
+        # Slight upward angle going right
+        pdf.line(pylon_x, py_line, exit_x, py_line - 0.5 * s)
+
+    # Arrow at end indicating grid
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.3)
+    arr_y = pylon_top_y + 1.5 * s
+    pdf.line(exit_x - 2 * s, arr_y, exit_x, arr_y)
+    pdf.line(exit_x, arr_y, exit_x - 1.5 * s, arr_y - 1.0 * s)
+    pdf.line(exit_x, arr_y, exit_x - 1.5 * s, arr_y + 1.0 * s)
+
+    # "GRID" label at end
+    pdf._font("B", 5)
+    pdf.set_text_color(*BRAND_PRIMARY)
+    pdf.set_xy(exit_x - 3 * s, arr_y + 1.5 * s)
+    pdf.cell(8 * s, 3, "GRID", align="C")
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 10. WIND FLOW ARROWS (sinusoidal, left side)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.35)
+
+    wind_arrow_ys = [hub_y - 10 * s, hub_y - 2 * s, hub_y + 6 * s, hub_y + 14 * s]
+    for i, wy in enumerate(wind_arrow_ys):
+        arrow_len = (16 + (i % 2) * 4) * s
+        amp = (1.0 + i * 0.2) * s
+        wx_start = hub_x - 32 * s - (i % 2) * 4 * s
+        _curved_arrow(wx_start, wy, arrow_len, amplitude=amp, segments=18)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 11. DIMENSION LINES (engineering drawing style)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    pdf.set_draw_color(80, 85, 110)
+    pdf.set_line_width(0.15)
+
+    # Hub height dimension (vertical dashed line to the right of tower)
+    dim_x = cx + 8 * s
+    _dashed_line(dim_x, cy, dim_x, hub_y, dash=1.2, gap=0.8)
+    # Horizontal ticks at top and bottom
+    tick = 1.5 * s
+    pdf.line(dim_x - tick / 2, cy, dim_x + tick / 2, cy)
+    pdf.line(dim_x - tick / 2, hub_y, dim_x + tick / 2, hub_y)
+    # Arrowheads
+    ah_s = 0.8 * s
+    pdf.line(dim_x, cy, dim_x - ah_s * 0.4, cy - ah_s)
+    pdf.line(dim_x, cy, dim_x + ah_s * 0.4, cy - ah_s)
+    pdf.line(dim_x, hub_y, dim_x - ah_s * 0.4, hub_y + ah_s)
+    pdf.line(dim_x, hub_y, dim_x + ah_s * 0.4, hub_y + ah_s)
+    # Height label
+    pdf._font("", 5)
+    pdf.set_text_color(120, 125, 150)
+    mid_y = (cy + hub_y) / 2
+    pdf.set_xy(dim_x + 1, mid_y - 2)
+    pdf.cell(12, 4, "HUB HT", align="L")
+
+    # Rotor diameter dimension (horizontal dashed line across blades)
+    blade_tip_y_top = hub_y - blade_len
+    blade_tip_y_bot = hub_y + blade_len * math.sin(math.radians(210))  # approx
+    dim_top_y = hub_y - blade_len - 3 * s
+    _dashed_line(hub_x - blade_len * 0.5, dim_top_y, hub_x + blade_len * 0.5, dim_top_y,
+                 dash=1.2, gap=0.8)
+    pdf.set_xy(hub_x - 8 * s, dim_top_y - 4)
+    pdf.cell(16 * s, 3, "ROTOR DIA", align="C")
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 12. TREE SILHOUETTES (more natural — layered canopy shapes)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    pdf.set_draw_color(55, 62, 85)
+    pdf.set_line_width(0.2)
+
+    tree_data = [
+        (cx - 42 * s, 10 * s),
+        (cx - 35 * s, 12 * s),
+        (cx - 30 * s, 8 * s),
+        (cx + 32 * s, 11 * s),
+        (cx + 40 * s, 9 * s),
+    ]
+
+    for tree_x, tree_h in tree_data:
+        tree_base_y = cy + (0.6 * math.sin(0.08 * tree_x)) * s  # align to terrain
+        # Trunk
+        pdf.line(tree_x, tree_base_y, tree_x, tree_base_y - tree_h * 0.4)
+        # Canopy — overlapping triangle layers
+        canopy_w = tree_h * 0.45
+        layers = 3
+        for li in range(layers):
+            frac = li / layers
+            ly_base = tree_base_y - tree_h * (0.25 + frac * 0.25)
+            ly_peak = tree_base_y - tree_h * (0.55 + frac * 0.2)
+            lw = canopy_w * (1.0 - frac * 0.3)
+            pdf.line(tree_x - lw, ly_base, tree_x, ly_peak)
+            pdf.line(tree_x + lw, ly_base, tree_x, ly_peak)
+            pdf.line(tree_x - lw, ly_base, tree_x + lw, ly_base)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 13. SUBSTATION OUTLINE (small building near transformer)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    sub_x = trf_x + 1 * s
+    sub_y = cy - 1 * s
+    sub_w = 7 * s
+    sub_h = 4 * s
+
+    # Fence outline (dashed)
+    pdf.set_draw_color(60, 65, 90)
+    pdf.set_line_width(0.15)
+    fence_margin = 1.5 * s
+    _dashed_line(trf_x - fence_margin, trf_y - 3.5 * s,
+                 trf_x + trf_w + fence_margin, trf_y - 3.5 * s, dash=1.0, gap=0.8)
+    _dashed_line(trf_x - fence_margin, cy + 1 * s,
+                 trf_x + trf_w + fence_margin, cy + 1 * s, dash=1.0, gap=0.8)
+    _dashed_line(trf_x - fence_margin, trf_y - 3.5 * s,
+                 trf_x - fence_margin, cy + 1 * s, dash=1.0, gap=0.8)
+    _dashed_line(trf_x + trf_w + fence_margin, trf_y - 3.5 * s,
+                 trf_x + trf_w + fence_margin, cy + 1 * s, dash=1.0, gap=0.8)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # CLEANUP
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     pdf.set_line_width(0.2)
 
 
 def _draw_component_label(pdf: "BDDAReport", text: str, px: float, py: float,
                            lx: float, ly: float):
-    """Draw a label with a leader line from (px,py) pointing to (lx,ly)."""
-    pdf.set_draw_color(*BRAND_GREY)
-    pdf.set_line_width(0.2)
-    pdf.line(px, py, lx, ly)
-    # Dot at pointer end
+    """Draw a professional CAD-style label with dashed leader line,
+    pointer dot, and a small shelf/rule under the text.
+
+    px, py = label text anchor position.
+    lx, ly = pointer target (component attachment point).
+    """
+    # ── Pointer dot at component end ──
     pdf.set_fill_color(*BRAND_PRIMARY)
-    pdf.circle(x=lx, y=ly, radius=0.8, style="F")
-    # Label text
-    pdf._font("", 6)
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.15)
+    pdf.circle(x=lx, y=ly, radius=0.9, style="FD")
+    # Inner highlight dot
+    pdf.set_fill_color(*BRAND_WHITE)
+    pdf.circle(x=lx, y=ly, radius=0.35, style="F")
+
+    # ── Dashed leader line ──
+    pdf.set_draw_color(100, 105, 130)
+    pdf.set_line_width(0.2)
+    # Draw dashed
+    dx = px - lx
+    dy = py - ly
+    length = math.sqrt(dx * dx + dy * dy)
+    if length > 0.5:
+        dash_len = 1.5
+        gap_len = 1.0
+        ux, uy = dx / length, dy / length
+        drawn = 0.0
+        while drawn < length:
+            seg_end = min(drawn + dash_len, length)
+            pdf.line(lx + ux * drawn, ly + uy * drawn,
+                     lx + ux * seg_end, ly + uy * seg_end)
+            drawn = seg_end + gap_len
+
+    # ── Determine text alignment and shelf direction ──
+    label_on_left = px < lx
+    shelf_w = max(len(text) * 1.6, 12)  # approximate shelf width from text length
+
+    if label_on_left:
+        shelf_x1 = px - shelf_w + 4
+        shelf_x2 = px + 4
+        text_x = shelf_x1
+        text_align = "L"
+    else:
+        shelf_x1 = px - 2
+        shelf_x2 = px + shelf_w - 2
+        text_x = shelf_x1
+        text_align = "L"
+
+    # ── Shelf line (thin horizontal rule under label text) ──
+    shelf_y = py + 1.5
+    pdf.set_draw_color(*BRAND_GREY)
+    pdf.set_line_width(0.25)
+    pdf.line(shelf_x1, shelf_y, shelf_x2, shelf_y)
+
+    # ── Label text (uppercase, small, letter-spaced feel) ──
+    pdf._font("B", 5.5)
     pdf.set_text_color(*BRAND_WHITE)
-    pdf.set_xy(px - 15 if px < lx else px + 1, py - 2)
-    pdf.cell(14, 4, text, align="C" if abs(px - lx) < 5 else ("R" if px < lx else "L"))
+    # Add spacing by inserting thin spaces between chars for a technical look
+    spaced_text = text.upper()
+    pdf.set_xy(text_x, py - 1.8)
+    pdf.cell(shelf_w, 3.5, spaced_text, align=text_align)
 
 
 # ─── DATA LOADING ─────────────────────────────────────────────────────────────
@@ -1507,13 +2025,21 @@ def _render_turbine_diagram(pdf: BDDAReport, report_data: dict):
 
     # ── Component labels (matching the reference illustration) ──
     # Label positions: (label_text, label_x, label_y, pointer_x, pointer_y)
+    s = 1.1  # must match scale passed to _draw_isometric_turbine
+    hub_x = diagram_cx - 6 * s
+    hub_y = diagram_cy - 58 * s - 1.5 * s
+    nacelle_mid_y = diagram_cy - 58 * s - 2.5 * s
+    trf_cx = diagram_cx + 14 * s + 4.5 * s  # transformer center x
+    trf_cy = diagram_cy - 3.5 * s            # transformer center y
     labels = [
-        ("NACELLE",          22, 110, diagram_cx - 5, 125),
-        ("ROTOR BLADES",      22, 95,  diagram_cx - 20, 135),
-        ("TOWER",            22, 155, diagram_cx - 2, 170),
-        ("TRANSFORMER",      100, 185, diagram_cx + 22, 180),
-        ("GRID CONNECTION",  100, 175, diagram_cx + 36, 179),
-        ("WIND DIRECTION →", 22, 138, diagram_cx - 30, 138),
+        ("NACELLE",          20, nacelle_mid_y - 6,  diagram_cx + 2, nacelle_mid_y),
+        ("ROTOR BLADES",     20, hub_y - 14,         hub_x - 8, hub_y - 8),
+        ("HUB / SPINNER",    20, hub_y + 4,          hub_x - 3.5 * s, hub_y),
+        ("TOWER",            20, 158,                diagram_cx - 2, 165),
+        ("FOUNDATION",       20, diagram_cy + 4,     diagram_cx, diagram_cy + 3 * s),
+        ("TRANSFORMER",      trf_cx + 8, trf_cy + 9, trf_cx, trf_cy),
+        ("TRANSMISSION",     trf_cx + 20, trf_cy - 8, diagram_cx + 42 * s, diagram_cy - 10 * s),
+        ("WIND FLOW",        20, hub_y + 18,         hub_x - 28 * s, hub_y + 6 * s),
     ]
     for text, px, py, lx, ly in labels:
         _draw_component_label(pdf, text, px, py, lx, ly)
