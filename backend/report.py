@@ -1278,22 +1278,50 @@ class BDDAReport(FPDF):
         self.set_margins(left=15, top=20, right=15)
 
     def _register_fonts(self):
-        """Register Inter TTF fonts; fall back to Helvetica if not found."""
+        """Register Syne (display/headings) + Inter (body) TTF fonts; fall back to Helvetica."""
+        self._fonts_registered = False
+        self._syne_registered = False
         try:
             self.add_font("Inter", style="",  fname=str(FONT_DIR / "Inter-Regular.ttf"))
             self.add_font("Inter", style="B", fname=str(FONT_DIR / "Inter-Bold.ttf"))
             self.add_font("Inter", style="I", fname=str(FONT_DIR / "Inter-Italic.ttf"))
             self._fonts_registered = True
         except (FileNotFoundError, Exception) as e:
-            print(f"WARNING: Inter TTF not found in assets/fonts/ — falling back to Helvetica. ({e})")
-            self._fonts_registered = False
+            print(f"WARNING: Inter TTF not found — falling back to Helvetica. ({e})")
+        try:
+            # Register Syne regular + bold under "Syne", ExtraBold as "SyneEB"
+            self.add_font("Syne",   style="",  fname=str(FONT_DIR / "Syne-Regular.ttf"))
+            self.add_font("Syne",   style="B", fname=str(FONT_DIR / "Syne-Bold.ttf"))
+            self.add_font("SyneEB", style="",  fname=str(FONT_DIR / "Syne-ExtraBold.ttf"))
+            self.add_font("SyneEB", style="B", fname=str(FONT_DIR / "Syne-ExtraBold.ttf"))
+            self._syne_registered = True
+        except (FileNotFoundError, Exception) as e:
+            print(f"WARNING: Syne TTF not found — headings will use Inter/Helvetica. ({e})")
 
     def _font(self, style: str = "", size: int = 10):
-        """Set font, using Inter if available else Helvetica."""
-        if self._fonts_registered:
-            self.set_font("Inter", style, size)
+        """Set font — Syne for all bold headings, Inter for regular/italic body."""
+        if self._syne_registered and style == "B":
+            self.set_font("Syne", "B", size)
+        elif self._fonts_registered:
+            inter_style = style if style in ("", "I", "B") else ""
+            self.set_font("Inter", inter_style, size)
         else:
-            self.set_font("Helvetica", style, size)
+            hv_style = "B" if style == "B" else ("I" if style == "I" else "")
+            self.set_font("Helvetica", hv_style, size)
+
+    def _font_syne(self, style: str = "B", size: int = 10):
+        """Syne display font — use "X" for ExtraBold, "B" for Bold, "" for Regular."""
+        if self._syne_registered:
+            if style == "X":
+                self.set_font("SyneEB", "", size)
+            elif style == "B":
+                self.set_font("Syne", "B", size)
+            else:
+                self.set_font("Syne", "", size)
+        elif self._fonts_registered:
+            self.set_font("Inter", "B" if style in ("B", "X") else "", size)
+        else:
+            self.set_font("Helvetica", "B" if style in ("B", "X") else "", size)
 
     def header(self):
         """Dark-themed branded header on all pages except cover (page 1)."""
@@ -1366,16 +1394,13 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
     pdf.set_y(14)
     pdf.set_x(15)
     pdf.set_text_color(*BRAND_PRIMARY)
-    if pdf._fonts_registered:
-        pdf.set_font("Inter", "B", 22)
-    else:
-        pdf.set_font("Helvetica", "B", 22)
+    pdf._font_syne("X", 26)
     pdf.cell(0, 12, "AWID", align="L")
 
     # ── Tagline ──
-    pdf.set_y(28)
+    pdf.set_y(29)
     pdf.set_x(15)
-    pdf._font("", 10)
+    pdf._font("", 9)
     pdf.set_text_color(*BRAND_GREY)
     pdf.cell(0, 7, "APAC Wind Inspections Drones", align="L")
 
@@ -1388,11 +1413,9 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
     # ── Main title ──
     pdf.set_y(78)
     pdf.set_text_color(*BRAND_WHITE)
-    if pdf._fonts_registered:
-        pdf.set_font("Inter", "B", 20)
-    else:
-        pdf.set_font("Helvetica", "B", 20)
-    pdf.cell(0, 12, "Wind Turbine Blade", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf._font_syne("X", 22)
+    pdf.cell(0, 13, "Wind Turbine Blade", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf._font_syne("B", 20)
     pdf.cell(0, 12, "Inspection Report", align="C", new_x="LMARGIN", new_y="NEXT")
 
     # ── Divider ──
@@ -1410,17 +1433,11 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
     insp_date   = turbine.get("inspection_date", "N/A")
     inspector   = turbine.get("inspector_name", "N/A")
 
-    if pdf._fonts_registered:
-        pdf.set_font("Inter", "B", 14)
-    else:
-        pdf.set_font("Helvetica", "B", 14)
+    pdf._font_syne("B", 14)
     pdf.set_text_color(*BRAND_WHITE)
     pdf.cell(0, 10, f"Turbine {turbine_id}", align="C", new_x="LMARGIN", new_y="NEXT")
 
-    if pdf._fonts_registered:
-        pdf.set_font("Inter", "", 12)
-    else:
-        pdf.set_font("Helvetica", "", 12)
+    pdf._font("", 11)
     pdf.set_text_color(*BRAND_LAVENDER)
     site_line = f"{site_name}{', ' + country if country else ''}"
     pdf.cell(0, 8, site_line, align="C", new_x="LMARGIN", new_y="NEXT")
@@ -1457,10 +1474,7 @@ def _render_cover(pdf: BDDAReport, report_data: dict):
     # Condition letter
     pdf.set_xy(badge_x, badge_y + 2)
     pdf.set_text_color(*badge_text_rgb)
-    if pdf._fonts_registered:
-        pdf.set_font("Inter", "B", 20)
-    else:
-        pdf.set_font("Helvetica", "B", 20)
+    pdf._font_syne("B", 18)
     pdf.cell(badge_w, 13, f"Condition {condition}", align="C", new_x="LMARGIN", new_y="NEXT")
 
     # Condition label
