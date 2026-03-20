@@ -11,7 +11,7 @@ import json
 import time
 import base64
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
 # ─── ANALYSIS PROMPT ─────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ DEFECT: {defect_name} (Category {category} — {urgency})
 SIZE: {size_estimate}
 CLASSIFICATION CONFIDENCE: {confidence:.0%}
 VISUAL OBSERVATION: {visual_description}
-
+{offshore_note}
 Please provide a professional engineering assessment for the Vestas maintenance team:
 
 1. ROOT CAUSE
@@ -99,6 +99,7 @@ class DeepAnalysis:
     additional_notes: str
     image_path: str = ""
     turbine_id: str = ""
+    cost_usd: float = 0.0
     error: Optional[str] = None
 
 
@@ -110,6 +111,7 @@ def call_claude_analyze(
     api_key: str,
     include_image: bool = True,
     max_retries: int = 3,
+    location_type: str = "onshore",
 ) -> Dict:
     """
     Call Claude Opus 4.6 for deep defect analysis.
@@ -122,6 +124,13 @@ def call_claude_analyze(
 
     client = anthropic.Anthropic(api_key=api_key)
 
+    offshore_note = (
+        "IMPORTANT: This is an OFFSHORE turbine. Repair access is significantly more expensive and difficult. "
+        "Weight this in repair urgency and timeframe recommendations."
+        if location_type == "offshore"
+        else ""
+    )
+
     prompt = ANALYZE_USER_PROMPT.format(
         turbine_id=defect.get("turbine_id", "Unknown"),
         turbine_model=turbine_model,
@@ -129,11 +138,12 @@ def call_claude_analyze(
         zone=defect.get("zone", "Unknown"),
         position=defect.get("position", "Unknown"),
         defect_name=defect["defect_name"],
-        category=defect["category"],
+        category=defect.get("iec_category", defect.get("category", 0)),
         urgency=defect.get("urgency", "URGENT"),
         size_estimate=defect.get("size_estimate", "Unknown"),
         confidence=float(defect.get("confidence", 0.0)),
         visual_description=defect.get("visual_description", "No description"),
+        offshore_note=offshore_note,
     )
 
     # Build message content
@@ -177,14 +187,26 @@ def call_claude_analyze(
                     raw = raw[4:]
             raw = raw.strip()
 
-            return json.loads(raw)
+            parsed = json.loads(raw)
+            parsed["input_tokens"] = response.usage.input_tokens
+            parsed["output_tokens"] = response.usage.output_tokens
+            return parsed
 
         except json.JSONDecodeError as e:
             if attempt == max_retries - 1:
                 return {"error": f"JSON parse: {e}", "raw": raw[:200]}
             time.sleep(1)
-        except anthropic.RateLimitError:
-            time.sleep(30)
+        except (anthropic.RateLimitError, anthropic.OverloadedError):
+            if attempt == max_retries - 1:
+                return {"error": "rate_limit_or_overloaded"}
+            sleep_time = (2 ** attempt) * 10  # 10s, 20s, 40s
+            time.sleep(sleep_time)
+            continue
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError):
+            if attempt == max_retries - 1:
+                return {"error": "connection_or_timeout"}
+            time.sleep(2 ** attempt)
+            continue
         except Exception as e:
             if attempt == max_retries - 1:
                 return {"error": str(e)}
@@ -203,12 +225,18 @@ def analyze_defect(
 ) -> DeepAnalysis:
     """Deep analysis for a single Cat 4+ defect."""
 
-    raw = call_claude_analyze(defect, turbine_model, api_key, include_image)
+    raw = call_claude_analyze(
+        defect,
+        turbine_model,
+        api_key,
+        include_image,
+        location_type=defect.get("location_type", "onshore"),
+    )
 
     if "error" in raw:
         return DeepAnalysis(
             defect_name=defect["defect_name"],
-            category=defect["category"],
+            category=defect.get("iec_category", defect.get("category", 0)),
             blade=defect.get("blade", ""),
             zone=defect.get("zone", ""),
             position=defect.get("position", ""),
@@ -224,12 +252,18 @@ def analyze_defect(
             additional_notes="",
             image_path=defect.get("image_path", ""),
             turbine_id=defect.get("turbine_id", ""),
+            cost_usd=0.0,
             error=raw["error"],
         )
 
+    cost_usd = (
+        raw.get("input_tokens", 0) * 5.0 / 1_000_000
+        + raw.get("output_tokens", 0) * 25.0 / 1_000_000
+    )
+
     return DeepAnalysis(
         defect_name=defect["defect_name"],
-        category=defect["category"],
+        category=defect.get("iec_category", defect.get("category", 0)),
         blade=defect.get("blade", ""),
         zone=defect.get("zone", ""),
         position=defect.get("position", ""),
@@ -245,6 +279,7 @@ def analyze_defect(
         additional_notes=raw.get("additional_notes", ""),
         image_path=defect.get("image_path", ""),
         turbine_id=defect.get("turbine_id", ""),
+        cost_usd=cost_usd,
     )
 
 
@@ -256,11 +291,14 @@ def analyze_critical_defects(
     api_key: str,
     delay_between_calls: float = 3.0,
     verbose: bool = True,
-) -> List[DeepAnalysis]:
+) -> Tuple[List[DeepAnalysis], float]:
     """
     Run deep analysis on all Cat 4+ defect findings.
 
     critical_findings: from classify.load_critical_findings()
+
+    Returns:
+        (results, total_cost_usd): list of DeepAnalysis objects and total cost in USD
     """
     results = []
     total = len(critical_findings)
@@ -270,7 +308,7 @@ def analyze_critical_defects(
 
     for i, defect in enumerate(critical_findings):
         if verbose:
-            print(f"  [{i+1}/{total}] Cat{defect['category']} {defect['defect_name']} | B{defect.get('blade','')} {defect.get('zone','')} {defect.get('position','')}")
+            print(f"  [{i+1}/{total}] Cat{defect.get('iec_category', defect.get('category', 0))} {defect['defect_name']} | B{defect.get('blade','')} {defect.get('zone','')} {defect.get('position','')}")
 
         analysis = analyze_defect(defect, turbine_model, api_key)
         results.append(analysis)
@@ -292,7 +330,8 @@ def analyze_critical_defects(
         critical_risk = sum(1 for a in results if a.failure_risk.get("safety_risk") == "Critical")
         print(f"\nAnalysis complete: {review_needed}/{total} need engineer review, {critical_risk} critical safety risk")
 
-    return results
+    total_cost = sum(a.cost_usd for a in results)
+    return results, total_cost
 
 
 def save_analysis_results(results: List[DeepAnalysis], output_path: Path):
@@ -316,6 +355,7 @@ def save_analysis_results(results: List[DeepAnalysis], output_path: Path):
             "engineer_review_reason": a.engineer_review_reason,
             "analysis_confidence": a.analysis_confidence,
             "additional_notes": a.additional_notes,
+            "cost_usd": a.cost_usd,
             "error": a.error,
         }
         for a in results

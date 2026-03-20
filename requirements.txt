@@ -8,20 +8,23 @@ python-multipart==0.0.12
 
 # ─── AI APIs ──────────────────────────────────────────────────────────────────
 anthropic>=0.40.0
-google-generativeai>=0.8.0
-openai>=1.50.0          # Kimi API (OpenAI-compatible)
 
 # ─── Image processing ─────────────────────────────────────────────────────────
 Pillow>=10.0.0
 opencv-python-headless>=4.9.0
 
-# ─── Template / PDF ───────────────────────────────────────────────────────────
-jinja2>=3.1.0
-python-bidi==0.4.2       # Pin pre-built wheel version (0.5+ requires Rust build)
-xhtml2pdf>=0.2.11        # Pure Python PDF renderer (no system deps needed)
+# ─── PDF generation ───────────────────────────────────────────────────────────
+fpdf2>=2.8.0             # Direct PDF construction — no system deps, works on Render
 
 # ─── Security ─────────────────────────────────────────────────────────────────
 slowapi>=0.1.9
 
 # ─── Utilities ────────────────────────────────────────────────────────────────
 python-dateutil>=2.9.0
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0
+
+# ─── Auth ─────────────────────────────────────────────────────────────────────
+PyJWT==2.11.0
+pwdlib[bcrypt]==0.3.0

@@ -14,31 +14,149 @@ import time
 import traceback
 import uuid
 import zipfile
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, BackgroundTasks, Security, Depends, Request
+from PIL import Image
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.security import APIKeyHeader
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import select, update as sa_update
+
+from auth import get_current_user, create_token, verify_password, hash_password
+from database import (
+    DATA_DIR, JOBS_DIR, init_db, get_db,
+    get_job, save_new_job, update_job, set_stage,
+    list_jobs_last_30_days, Job,
+    get_user_by_username, create_user, _seed_admin_user,
+    User,
+)
+
+# ─── PATHS ────────────────────────────────────────────────────────────────────
+
+# DATA_DIR and JOBS_DIR imported from database.py
+# FRONTEND_DIR is relative to this file
+BASE_DIR = Path(__file__).parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+
+# ─── CONFIG ───────────────────────────────────────────────────────────────────
+
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+
+# ─── COST ESTIMATION ──────────────────────────────────────────────────────────
+
+INPUT_PRICE  = 5.0 / 1_000_000   # $ per token, claude-opus-4-6
+OUTPUT_PRICE = 25.0 / 1_000_000  # $ per token, claude-opus-4-6
+
+
+def estimate_cost(image_count: int) -> dict:
+    """Conservative pre-run cost estimate before pipeline starts."""
+    TOKENS_PER_TILE     = 1600
+    TILES_PER_IMAGE     = 4
+    TRIAGE_OUT_EST      = 80
+    CLASSIFY_IN_EST     = 1600
+    CLASSIFY_OUT_EST    = 500
+    ANALYZE_IN_EST      = 1600
+    ANALYZE_OUT_EST     = 600
+    flagged_est         = int(image_count * 0.30)
+    critical_est        = int(flagged_est * 0.20)
+
+    triage_in   = image_count * TILES_PER_IMAGE * TOKENS_PER_TILE
+    triage_out  = image_count * TRIAGE_OUT_EST
+    classify_in = flagged_est * CLASSIFY_IN_EST
+    classify_out = flagged_est * CLASSIFY_OUT_EST
+    analyze_in  = critical_est * ANALYZE_IN_EST
+    analyze_out = critical_est * ANALYZE_OUT_EST
+
+    total_in  = triage_in + classify_in + analyze_in
+    total_out = triage_out + classify_out + analyze_out
+    total_usd = total_in * INPUT_PRICE + total_out * OUTPUT_PRICE
+
+    return {
+        "image_count": image_count,
+        "flagged_estimate": flagged_est,
+        "critical_estimate": critical_est,
+        "estimated_cost_usd": round(total_usd, 2),
+        "breakdown": {
+            "triage_usd": round(triage_in * INPUT_PRICE + triage_out * OUTPUT_PRICE, 2),
+            "classify_usd": round(classify_in * INPUT_PRICE + classify_out * OUTPUT_PRICE, 2),
+            "analyze_usd": round(analyze_in * INPUT_PRICE + analyze_out * OUTPUT_PRICE, 2),
+        },
+    }
+
+
+# ─── LIFESPAN ─────────────────────────────────────────────────────────────────
+
+INTERRUPTED_STAGES = {"triaging", "classifying", "analyzing", "ingesting", "generating_report", "queued"}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup — order matters:
+    # 1. init_db() creates tables (users + jobs) if they don't exist
+    # 2. migrate_schema() adds owner_id column to existing jobs table
+    # 3. _seed_admin_user() seeds admin user if users table is empty
+    # 4. _mark_interrupted_jobs_failed() recovers in-progress jobs from before restart
+    from database import migrate_schema
+    init_db()
+    migrate_schema()
+    _seed_admin_user()
+    _mark_interrupted_jobs_failed()
+    yield
+    # Shutdown — nothing needed
+
+
+def _mark_interrupted_jobs_failed():
+    """On restart, mark any in-progress jobs as failed (per CONTEXT.md Area A)."""
+    with get_db() as session:
+        stmt = (
+            sa_update(Job)
+            .where(Job.stage.in_(INTERRUPTED_STAGES))
+            .values(
+                stage="failed",
+                stage_message="Job interrupted by server restart",
+            )
+        )
+        session.execute(stmt)
+        session.commit()
+
 
 # ─── APP SETUP ────────────────────────────────────────────────────────────────
+
+ALLOWED_EXTENSIONS = {".zip", ".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"}
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="BDDA — Blade Defect Detection Agent",
     description="AI-powered wind turbine drone inspection analysis",
-    version="1.0.0",
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def attach_new_token_header(request: Request, call_next):
+    """Read request.state.new_token (set by get_current_user when <1h remaining)
+    and attach it as X-New-Token response header for the frontend to store.
+    """
+    response = await call_next(request)
+    new_token = getattr(request.state, "new_token", None)
+    if new_token:
+        response.headers["X-New-Token"] = new_token
+    return response
+
 
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(",")
 
@@ -48,64 +166,21 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["POST", "GET", "DELETE"],
     allow_headers=["*"],
+    expose_headers=["X-New-Token"],  # required so browser JS can read this header
 )
 
-# ─── AUTH ─────────────────────────────────────────────────────────────────────
-
-_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=True)
-
-ALLOWED_EXTENSIONS = {".zip", ".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"}
-MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
+# ─── DISK SPACE GUARD ─────────────────────────────────────────────────────────
 
 
-def verify_api_key(api_key: str = Security(_API_KEY_HEADER)):
-    expected = os.environ.get("BDDA_API_KEY", "")
-    if not expected or api_key != expected:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return api_key
-
-# ─── PATHS ────────────────────────────────────────────────────────────────────
-
-BASE_DIR = Path(__file__).parent.parent
-JOBS_DIR = BASE_DIR / "jobs"
-FRONTEND_DIR = BASE_DIR / "frontend"
-TEMPLATES_DIR = BASE_DIR / "templates"
-JOBS_DIR.mkdir(exist_ok=True)
-
-# ─── JOB STATE ────────────────────────────────────────────────────────────────
-
-# In-memory job registry (survives within a process; jobs re-read from disk on restart)
-_jobs: Dict[str, Dict] = {}
-
-
-def get_job(job_id: str) -> Optional[Dict]:
-    if job_id in _jobs:
-        return _jobs[job_id]
-    # Try loading from disk
-    state_file = JOBS_DIR / job_id / "state.json"
-    if state_file.exists():
-        with open(state_file) as f:
-            _jobs[job_id] = json.load(f)
-        return _jobs[job_id]
-    return None
-
-
-def save_job(job_id: str, state: Dict):
-    _jobs[job_id] = state
-    job_dir = JOBS_DIR / job_id
-    job_dir.mkdir(exist_ok=True)
-    with open(job_dir / "state.json", "w") as f:
-        json.dump(state, f, indent=2, default=str)
-
-
-def update_job(job_id: str, **kwargs):
-    state = get_job(job_id) or {}
-    state.update(kwargs)
-    save_job(job_id, state)
-
-
-def set_stage(job_id: str, stage: str, message: str = ""):
-    update_job(job_id, stage=stage, stage_message=message, updated_at=datetime.now().isoformat())
+def check_disk_space():
+    """Refuse uploads if less than 100MB free on the data disk (per CONTEXT.md Area D)."""
+    usage = shutil.disk_usage(DATA_DIR)
+    free_mb = usage.free / (1024 * 1024)
+    if free_mb < 100:
+        raise HTTPException(
+            status_code=507,
+            detail="Server storage full — please contact the administrator.",
+        )
 
 
 # ─── PIPELINE ─────────────────────────────────────────────────────────────────
@@ -120,7 +195,6 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         from triage import triage_batch, save_triage_results
         from classify import classify_batch, save_classify_results, load_critical_findings
         from analyze import analyze_critical_defects, save_analysis_results
-        from report import build_report, make_sample_turbine_meta
 
         images_dir = job_dir / "images"
 
@@ -141,133 +215,146 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         )
         images = get_all_images_flat(result)
         update_job(job_id, total_images=len(images))
+
+        # 500-image cap
+        IMAGE_CAP = 500
+        if len(images) > IMAGE_CAP:
+            skipped_count = len(images) - IMAGE_CAP
+            images = images[:IMAGE_CAP]
+            update_job(job_id, image_cap_warning=f"Capped at {IMAGE_CAP} images. {skipped_count} images skipped.")
+
         set_stage(job_id, "triaging", f"Screening {len(images)} images for defects...")
 
         # ── Stage 2: Triage ──
-        kimi_key = os.environ.get("KIMI_API_KEY", "")
-        if not kimi_key:
-            # Skip triage if no API key — treat all images as flagged
-            flagged = [{"path": str(img["path"]), "turbine_id": img["turbine_id"],
-                        "blade": img["blade"], "zone": img["zone"], "position": img["position"],
-                        "mission_folder": img["mission_folder"], "has_defect": True,
-                        "defect_hint": "Triage skipped (no KIMI_API_KEY)"} for img in images[:50]]
-            update_job(job_id, flagged_images=len(flagged))
-        else:
-            from triage import triage_batch
-            summary = triage_batch(images, kimi_key, verbose=False)
-            triage_path = job_dir / "triage.json"
-            save_triage_results(summary, triage_path)
-            flagged = [
-                {**vars(r), "path": str(r.image_path)}
-                for r in summary.results if r.has_defect
-            ]
-            update_job(job_id, flagged_images=len(flagged))
+        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        cost_limit_usd = float(os.environ.get("COST_LIMIT_USD", "999999"))
+        running_cost = 0.0
+
+        if not anthropic_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not set — pipeline requires Anthropic API key")
+
+        summary = triage_batch(
+            images,
+            anthropic_key,
+            n_tiles=4,
+            location_type=turbine_meta.get("location_type", "onshore"),
+            turbine_model=turbine_meta.get("turbine_model", ""),
+            inspection_date=turbine_meta.get("inspection_date", ""),
+            job_dir=job_dir,
+            verbose=False,
+        )
+        triage_path = job_dir / "triage.json"
+        save_triage_results(summary, triage_path)
+        triage_cost = summary.triage_cost_usd
+        running_cost += triage_cost
+        update_job(job_id, flagged_images=summary.flagged_images, triage_cost_usd=triage_cost)
+
+        # Save thumbnail copies of flagged images before deleting originals.
+        # These survive for classify stage and PDF report embedding (PDF-03).
+        # Max 80 flagged images × ~150KB each = ~12MB — well within 1GB disk budget.
+        thumbnails_dir = job_dir / "thumbnails"
+        thumbnails_dir.mkdir(exist_ok=True)
+        flagged_paths = {str(r.image_path) for r in summary.results if r.has_defect}
+        for orig_path_str in flagged_paths:
+            orig_path = Path(orig_path_str)
+            if orig_path.exists():
+                thumb_path = thumbnails_dir / orig_path.name
+                try:
+                    with Image.open(orig_path) as img:
+                        img.thumbnail((1568, 1568), Image.LANCZOS)
+                        img.convert("RGB").save(str(thumb_path), "JPEG", quality=85)
+                except Exception:
+                    # If thumbnail creation fails, copy original (better than nothing)
+                    shutil.copy2(str(orig_path), str(thumb_path))
+
+        # Delete uploaded images after triage — they are 15-30MB each and not needed
+        images_dir = job_dir / "images"
+        if images_dir.exists():
+            shutil.rmtree(images_dir)
+
+        # Cost limit check after triage
+        if running_cost > cost_limit_usd:
+            update_job(job_id, stage="error", stage_message=f"Cost limit exceeded after triage: ${running_cost:.2f} > ${cost_limit_usd:.2f}")
+            return
+
+        flagged = [
+            {**vars(r), "path": str(r.image_path), "location_type": turbine_meta.get("location_type", "onshore")}
+            for r in summary.results if r.has_defect
+        ]
+        # Update flagged image paths to point to thumbnail copies (originals now deleted).
+        # Classify stage and PDF report read from these thumbnail paths.
+        for f in flagged:
+            orig_name = Path(f["path"]).name
+            thumb = thumbnails_dir / orig_name
+            if thumb.exists():
+                f["path"] = str(thumb)
 
         set_stage(job_id, "classifying", f"Classifying {len(flagged)} flagged images...")
 
         # ── Stage 3: Classify ──
-        google_key = os.environ.get("GOOGLE_API_KEY", "")
         classify_path = job_dir / "classify.json"
 
-        if not google_key:
-            # Generate minimal classify JSON from flagged images
-            dummy_classify = [
-                {
-                    "image_path": img["path"],
-                    "turbine_id": turbine_meta["turbine_id"],
-                    "blade": img.get("blade", "A"),
-                    "zone": img.get("zone", "LE"),
-                    "position": img.get("position", "Mid"),
-                    "mission_folder": img.get("mission_folder", ""),
-                    "image_quality": "good",
-                    "image_notes": "Classification skipped (no GOOGLE_API_KEY)",
-                    "error": None,
-                    "max_category": 0,
-                    "defects": [],
-                }
-                for img in flagged[:20]
-            ]
-            with open(classify_path, "w") as f:
-                json.dump(dummy_classify, f)
-            critical_findings = []
-        else:
-            from classify import classify_batch, save_classify_results, load_critical_findings
-            classify_results = classify_batch(
-                flagged[:80],  # cap at 80 images
-                turbine_meta.get("turbine_model", "Unknown"),
-                google_key,
-                verbose=False,
-            )
-            save_classify_results(classify_results, classify_path)
-            critical_findings = load_critical_findings(classify_path)
-            update_job(job_id, critical_findings=len(critical_findings))
+        classify_results = classify_batch(
+            flagged[:80],  # cap at 80 images
+            turbine_meta.get("turbine_model", "Unknown"),
+            anthropic_key,
+            verbose=False,
+        )
+        save_classify_results(classify_results, classify_path)
+        classify_cost = sum(r.cost_usd for r in classify_results)
+        running_cost += classify_cost
+        update_job(job_id, critical_findings=sum(1 for r in classify_results if r.has_critical), classify_cost_usd=classify_cost)
+        critical_findings = load_critical_findings(classify_path)
+
+        # Cost limit check after classify
+        if running_cost > cost_limit_usd:
+            update_job(job_id, stage="error", stage_message=f"Cost limit exceeded after classify: ${running_cost:.2f} > ${cost_limit_usd:.2f}")
+            return
 
         set_stage(job_id, "analyzing", f"Deep analysis of {len(critical_findings)} critical findings...")
 
         # ── Stage 4: Analyze ──
         analyze_path = job_dir / "analyze.json"
-        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
-        if not anthropic_key or not critical_findings:
-            analyze_data = []
-            with open(analyze_path, "w") as f:
-                json.dump(analyze_data, f)
-        else:
-            from analyze import analyze_critical_defects, save_analysis_results
-            analyses = analyze_critical_defects(
+        if critical_findings:
+            analyses, analyze_cost = analyze_critical_defects(
                 critical_findings,
                 turbine_meta.get("turbine_model", "Unknown"),
                 anthropic_key,
                 verbose=False,
             )
             save_analysis_results(analyses, analyze_path)
-            analyze_data = [
-                {
-                    "defect_name": a.defect_name,
-                    "category": a.category,
-                    "turbine_id": a.turbine_id,
-                    "blade": a.blade,
-                    "zone": a.zone,
-                    "position": a.position,
-                    "root_cause": a.root_cause,
-                    "failure_risk": a.failure_risk,
-                    "vestas_standard": a.vestas_standard,
-                    "recommended_action": a.recommended_action,
-                    "repair_timeframe": a.repair_timeframe,
-                    "estimated_cost_usd": a.estimated_cost_usd,
-                    "engineer_review_required": a.engineer_review_required,
-                    "engineer_review_reason": a.engineer_review_reason,
-                    "analysis_confidence": a.analysis_confidence,
-                    "additional_notes": a.additional_notes,
-                    "error": a.error,
-                }
-                for a in analyses
-            ]
+            running_cost += analyze_cost
+            update_job(job_id, analyze_cost_usd=analyze_cost)
+        else:
+            analyses = []
+            analyze_cost = 0.0
+            with open(analyze_path, "w") as f:
+                json.dump([], f)
 
         set_stage(job_id, "generating_report", "Building PDF report...")
 
         # ── Stage 5: Report ──
-        triage_json = job_dir / "triage.json" if (job_dir / "triage.json").exists() else None
-        pdf_path = job_dir / f"report_{turbine_meta['turbine_id']}.pdf"
+        from report import build_report_data, generate_pdf_fpdf2, load_classify_json, load_analyze_json, load_triage_json
 
-        from report import build_report
-        build_report(
-            turbine_meta=turbine_meta,
-            classify_json_path=classify_path,
-            output_pdf_path=pdf_path,
-            triage_json_path=triage_json,
-            analyze_json_path=analyze_path,
-            templates_dir=TEMPLATES_DIR,
-            save_html=True,
-            verbose=False,
-        )
+        classify_data = load_classify_json(classify_path)
+        analyze_data = load_analyze_json(analyze_path) if analyze_path.exists() else []
+        triage_data = None
+        triage_path_json = job_dir / "triage.json"
+        if triage_path_json.exists():
+            triage_data = load_triage_json(triage_path_json)
+
+        report_data = build_report_data(turbine_meta, triage_data, classify_data, analyze_data)
+        pdf_path = job_dir / f"report_{turbine_meta['turbine_id']}.pdf"
+        generate_pdf_fpdf2(report_data, pdf_path)
 
         update_job(
             job_id,
             stage="complete",
             stage_message="Report ready",
             pdf_path=str(pdf_path),
-            completed_at=datetime.now().isoformat(),
+            completed_at=datetime.now(timezone.utc),
+            total_cost_usd=round(running_cost, 4),
         )
 
     except Exception as e:
@@ -277,7 +364,7 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
             stage="error",
             stage_message=str(e),
             error_traceback=tb,
-            failed_at=datetime.now().isoformat(),
+            failed_at=datetime.now(timezone.utc),
         )
 
 
@@ -288,7 +375,7 @@ def extract_upload(upload_file: UploadFile, dest_dir: Path) -> int:
     filename = upload_file.filename or ""
     suffix = Path(filename).suffix
     if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     content = upload_file.file.read()
@@ -315,11 +402,73 @@ def extract_upload(upload_file: UploadFile, dest_dir: Path) -> int:
 
 # ─── ENDPOINTS ────────────────────────────────────────────────────────────────
 
+@app.post("/api/estimate")
+async def cost_estimate(image_count: int = Form(...)):
+    """Return estimated pipeline cost for a given image count before committing to run."""
+    if image_count > 500:
+        image_count = 500  # cap matches pipeline cap
+    return estimate_cost(image_count)
+
+
+@app.post("/api/auth/token")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Login endpoint. Accepts application/x-www-form-urlencoded (OAuth2 standard).
+
+    Returns {"access_token": JWT, "token_type": "bearer"} on success.
+    Returns 401 on wrong credentials.
+
+    Per CONTEXT.md Area D: frontend submits with URLSearchParams (not JSON) to satisfy
+    OAuth2PasswordRequestForm's x-www-form-urlencoded content type requirement.
+    """
+    user = get_user_by_username(form_data.username)
+    if not user or not verify_password(form_data.password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = create_token(user["username"], user["id"], user["is_admin"])
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/api/admin/create-user", status_code=201)
+async def admin_create_user(
+    username: str = Form(...),
+    password: str = Form(...),
+    is_admin: bool = Form(False),
+    x_admin_secret: Optional[str] = Header(None),
+):
+    """Create a new inspector account.
+
+    Protected by X-Admin-Secret header (not JWT). CONTEXT.md Area A: admin operates
+    via direct API call, not the inspector UI. Caller sends X-Admin-Secret: <value>.
+    FastAPI maps hyphenated header name to x_admin_secret (underscore, lowercase).
+
+    Returns 403 if ADMIN_SECRET env var is not set or header value doesn't match.
+    Returns 409 if username already exists.
+    Returns 201 + {"username": ..., "is_admin": ...} on success.
+    """
+    if not ADMIN_SECRET or x_admin_secret != ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        new_user = create_user(
+            username=username,
+            hashed_password=hash_password(password),
+            is_admin=is_admin,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return {"username": new_user["username"], "is_admin": new_user["is_admin"]}
+
+
 @app.post("/api/upload")
 @limiter.limit("10/hour")
 async def upload_inspection(
     request: Request,
     background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
     turbine_id: str = Form(...),
     site_name: str = Form(...),
     country: str = Form(...),
@@ -337,9 +486,11 @@ async def upload_inspection(
     gps_lon: Optional[str] = Form(None),
     drone_model: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
+    location_type: Optional[str] = Form(None),
     images: UploadFile = File(...),
-    _: str = Depends(verify_api_key),
 ):
+    check_disk_space()
+
     job_id = str(uuid.uuid4())[:8]
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -370,30 +521,46 @@ async def upload_inspection(
         "drone_model": drone_model or "DJI Matrice 300 RTK",
         "camera": "DJI Zenmuse P1 45MP",
         "notes": notes or "",
-        "company_name": os.environ.get("COMPANY_NAME", "DroneWind Asia"),
+        "company_name": os.environ.get("COMPANY_NAME", "AWID - APAC Wind Inspections Drones"),
+        "location_type": location_type if location_type in ("onshore", "offshore") else "onshore",
     }
 
-    save_job(job_id, {
-        "job_id": job_id,
-        "stage": "queued",
-        "stage_message": "Job queued",
-        "turbine_meta": turbine_meta,
-        "image_count": image_count,
-        "created_at": datetime.now().isoformat(),
-    })
+    save_new_job(
+        {
+            "job_id": job_id,
+            "stage": "queued",
+            "stage_message": "Job queued",
+            "turbine_meta": turbine_meta,
+            "image_count": image_count,
+        },
+        owner_id=current_user["user_id"],
+    )
+
+    # Compute cost estimate before starting
+    cost_est = estimate_cost(min(image_count, 500))
 
     # Run pipeline in background
     background_tasks.add_task(run_pipeline, job_id, job_dir, turbine_meta)
 
-    return {"job_id": job_id, "image_count": image_count, "message": "Pipeline started"}
+    return {
+        "job_id": job_id,
+        "image_count": image_count,
+        "message": "Pipeline started",
+        "cost_estimate": cost_est,
+    }
 
 
 @app.get("/api/status/{job_id}")
 @limiter.limit("60/minute")
-async def get_status(request: Request, job_id: str, _: str = Depends(verify_api_key)):
+async def get_status(request: Request, job_id: str, current_user: dict = Depends(get_current_user)):
     state = get_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    # Ownership enforcement (per CONTEXT.md Area B): admin exempt, inspector must own job
+    if not current_user["is_admin"]:
+        if state.get("owner_id") != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Access forbidden")
 
     # Map stage to progress %
     stage_progress = {
@@ -405,6 +572,8 @@ async def get_status(request: Request, job_id: str, _: str = Depends(verify_api_
         "generating_report": 85,
         "complete": 100,
         "error": -1,
+        "failed": -1,
+        "cost_limit_exceeded": -1,
     }
 
     stage = state.get("stage", "queued")
@@ -418,56 +587,60 @@ async def get_status(request: Request, job_id: str, _: str = Depends(verify_api_
         "critical_findings": state.get("critical_findings"),
         "created_at": state.get("created_at"),
         "completed_at": state.get("completed_at"),
-        "error": state.get("stage_message") if stage == "error" else None,
-        "error_traceback": state.get("error_traceback") if stage == "error" else None,
+        "error": state.get("stage_message") if stage in ("error", "failed") else None,
+        "error_traceback": state.get("error_traceback") if stage in ("error", "failed") else None,
+        "triage_cost_usd": state.get("triage_cost_usd"),
+        "classify_cost_usd": state.get("classify_cost_usd"),
+        "analyze_cost_usd": state.get("analyze_cost_usd"),
+        "total_cost_usd": state.get("total_cost_usd"),
+        "image_cap_warning": state.get("image_cap_warning"),
     }
 
 
-@app.get("/api/debug/kimi")
-@limiter.limit("5/hour")
-async def debug_kimi(request: Request, _: str = Depends(verify_api_key)):
-    """Test Kimi API directly — returns raw response for diagnosis."""
-    import base64, io, re
+@app.get("/api/debug/ai")
+async def debug_ai():
+    """Test Anthropic claude-opus-4-6 vision API — sends a test image, returns raw response."""
+    import base64, io
     from PIL import Image as PILImage
 
-    kimi_key = os.environ.get("KIMI_API_KEY", "")
-    if not kimi_key:
-        return {"error": "KIMI_API_KEY not set"}
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
+        return {"error": "ANTHROPIC_API_KEY not set"}
 
-    # Create a tiny 64x64 solid grey test image
+    # Create a small 64x64 solid grey test image
     img = PILImage.new("RGB", (64, 64), color=(128, 128, 128))
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=60)
     b64 = base64.b64encode(buf.getvalue()).decode()
 
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=kimi_key, base_url="https://api.moonshot.cn/v1")
-
-        # Test 1: vision-preview model with image
-        response = client.chat.completions.create(
-            model="moonshot-v1-8k-vision-preview",
-            messages=[{"role": "user", "content": [
-                {"type": "text", "text": 'Reply ONLY with valid JSON: {"has_defect": false, "confidence": 0.1, "defect_hint": null}'},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-            ]}],
-            max_tokens=300,
-            temperature=0.1,
+        import anthropic
+        client = anthropic.Anthropic(api_key=anthropic_key)
+        response = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=100,
+            system="You are a test assistant.",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+                    {"type": "text", "text": 'Reply ONLY with valid JSON: {"status": "ok", "model": "claude-opus-4-6", "vision": true}'},
+                ],
+            }],
         )
-        raw = response.choices[0].message.content
-        cleaned = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
-        cleaned = re.sub(r"\s*```\s*$", "", cleaned, flags=re.MULTILINE).strip()
+        raw = response.content[0].text.strip()
         try:
-            parsed = json.loads(cleaned)
+            parsed = json.loads(raw)
             parse_ok = True
         except Exception as pe:
             parsed = None
             parse_ok = str(pe)
 
         return {
-            "model": "moonshot-v1-8k-vision-preview",
-            "raw_response": repr(raw),
-            "cleaned": repr(cleaned),
+            "model": "claude-opus-4-6",
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+            "raw_response": raw,
             "parse_ok": parse_ok,
             "parsed": parsed,
         }
@@ -478,10 +651,15 @@ async def debug_kimi(request: Request, _: str = Depends(verify_api_key)):
 
 @app.get("/api/download/{job_id}")
 @limiter.limit("30/hour")
-async def download_report(request: Request, job_id: str, _: str = Depends(verify_api_key)):
+async def download_report(request: Request, job_id: str, current_user: dict = Depends(get_current_user)):
     state = get_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    if not current_user["is_admin"]:
+        if state.get("owner_id") != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Access forbidden")
+
     if state.get("stage") != "complete":
         raise HTTPException(status_code=400, detail="Report not ready yet")
 
@@ -501,33 +679,31 @@ async def download_report(request: Request, job_id: str, _: str = Depends(verify
 
 
 @app.get("/api/jobs")
-@limiter.limit("30/minute")
-async def list_jobs(request: Request, _: str = Depends(verify_api_key)):
-    """List recent jobs (last 20)."""
-    jobs = []
-    for state_file in sorted(JOBS_DIR.glob("*/state.json"), reverse=True)[:20]:
-        try:
-            with open(state_file) as f:
-                state = json.load(f)
-            jobs.append({
-                "job_id": state["job_id"],
-                "turbine_id": state.get("turbine_meta", {}).get("turbine_id"),
-                "stage": state.get("stage"),
-                "created_at": state.get("created_at"),
-                "completed_at": state.get("completed_at"),
-            })
-        except Exception:
-            pass
-    return jobs
+async def list_jobs(current_user: dict = Depends(get_current_user)):
+    """List jobs from the last 30 days. Admin sees all; inspector sees own jobs only.
+
+    Per CONTEXT.md Area B: existing jobs with NULL owner_id are visible to admin,
+    not to inspectors (SQLAlchemy WHERE owner_id == uuid naturally excludes NULLs).
+    """
+    if current_user["is_admin"]:
+        return list_jobs_last_30_days()          # no filter — admin sees all
+    return list_jobs_last_30_days(owner_id=current_user["user_id"])
 
 
 @app.delete("/api/jobs/{job_id}")
-@limiter.limit("20/hour")
-async def delete_job(request: Request, job_id: str, _: str = Depends(verify_api_key)):
-    job_dir = JOBS_DIR / job_id
-    if job_dir.exists():
-        shutil.rmtree(job_dir)
-    _jobs.pop(job_id, None)
+async def delete_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete job — removes SQLite row AND job directory."""
+    with get_db() as session:
+        job = session.scalars(select(Job).where(Job.job_id == job_id)).first()
+        if job:
+            if not current_user["is_admin"] and job.owner_id != current_user["user_id"]:
+                raise HTTPException(status_code=403, detail="Access forbidden")
+            # Remove files first, then DB row
+            job_dir = JOBS_DIR / job_id
+            if job_dir.exists():
+                shutil.rmtree(job_dir)
+            session.delete(job)
+            session.commit()
     return {"deleted": job_id}
 
 
@@ -535,35 +711,28 @@ async def delete_job(request: Request, job_id: str, _: str = Depends(verify_api_
 
 @app.get("/api/health")
 async def health():
-    """Public health check for Render uptime monitoring."""
-    return {"status": "ok"}
-
-
-@app.get("/api/config")
-async def config(_: str = Depends(verify_api_key)):
-    """Authenticated endpoint — returns API key configuration status."""
     keys = {
         "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
-        "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),
-        "KIMI_API_KEY": bool(os.environ.get("KIMI_API_KEY")),
+        "COST_LIMIT_USD": os.environ.get("COST_LIMIT_USD", "not set"),
     }
-    return {"status": "ok", "api_keys": keys}
+    return {"status": "ok", "api_keys": keys, "jobs_dir": str(JOBS_DIR), "data_dir": str(DATA_DIR)}
 
 
-# ─── FRONTEND SERVE ──────────────────────────────────────────────────────────
-# Serve index.html dynamically so we can inject window.BDDA_API_KEY at runtime.
-# Static assets (app.js, style.css) are served from /static/.
+# ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
+
+@app.get("/login")
+async def login_page():
+    """Serve the login HTML page."""
+    login_path = FRONTEND_DIR / "login.html"
+    if not login_path.exists():
+        raise HTTPException(status_code=404, detail="Login page not found — run Plan 04 first")
+    return HTMLResponse(content=login_path.read_text())
+
+
+# ─── STATIC FILES ────────────────────────────────────────────────────────────
 
 if FRONTEND_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
-
-    @app.get("/", response_class=HTMLResponse)
-    async def serve_index():
-        html = (FRONTEND_DIR / "index.html").read_text()
-        api_key = os.environ.get("BDDA_API_KEY", "")
-        inject = f'<script>window.BDDA_API_KEY = "{api_key}";</script>\n'
-        html = html.replace("<script src=\"app.js\">", inject + "<script src=\"/static/app.js\">")
-        return HTMLResponse(content=html)
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
