@@ -5,6 +5,13 @@
 
 const API = '';  // Same-origin; set to 'http://localhost:8000' for local dev
 
+// API key injected at build/deploy time via BDDA_FRONTEND_KEY env var (Render replaces __BDDA_KEY__)
+const API_KEY = window.BDDA_API_KEY || '__BDDA_KEY__';
+
+function apiHeaders() {
+  return { 'X-API-Key': API_KEY };
+}
+
 // ─── STATE ────────────────────────────────────────────────────────────────────
 
 let currentJobId = null;
@@ -35,7 +42,7 @@ const apiStatus     = document.getElementById('apiStatus');
 
 async function checkApiHealth() {
   try {
-    const res = await fetch(`${API}/api/health`);
+    const res = await fetch(`${API}/api/health`, { headers: apiHeaders() });
     if (!res.ok) throw new Error('API not reachable');
     const data = await res.json();
 
@@ -107,6 +114,7 @@ uploadForm.addEventListener('submit', async e => {
   try {
     const res = await fetch(`${API}/api/upload`, {
       method: 'POST',
+      headers: apiHeaders(),
       body: formData,
     });
 
@@ -186,7 +194,8 @@ function updateJobPanel(status) {
 
   // Complete
   if (stage === 'complete') {
-    downloadBtn.href = `${API}/api/download/${currentJobId}`;
+    downloadBtn.onclick = () => downloadReport(currentJobId);
+    downloadBtn.removeAttribute('href');
     downloadBtn.style.display = 'flex';
     progressBar.style.background = 'var(--green)';
     stopPolling();
@@ -223,7 +232,7 @@ function stopPolling() {
 
 async function pollStatus(jobId) {
   try {
-    const res = await fetch(`${API}/api/status/${jobId}`);
+    const res = await fetch(`${API}/api/status/${jobId}`, { headers: apiHeaders() });
     if (!res.ok) return;
     const status = await res.json();
     updateJobPanel(status);
@@ -239,7 +248,7 @@ async function pollStatus(jobId) {
 
 async function loadHistory() {
   try {
-    const res = await fetch(`${API}/api/jobs`);
+    const res = await fetch(`${API}/api/jobs`, { headers: apiHeaders() });
     if (!res.ok) return;
     const jobs = await res.json();
 
@@ -257,7 +266,7 @@ async function loadHistory() {
                        : 'Running';
       const date = j.created_at ? new Date(j.created_at).toLocaleDateString() : '';
       const dlLink = j.stage === 'complete'
-        ? `<a class="history-download" href="${API}/api/download/${j.job_id}" target="_blank">⬇ PDF</a>`
+        ? `<button class="history-download" onclick="downloadReport('${j.job_id}')">⬇ PDF</button>`
         : '';
 
       return `
@@ -275,6 +284,24 @@ async function loadHistory() {
     }).join('');
   } catch {
     // Silently fail
+  }
+}
+
+// ─── DOWNLOAD ────────────────────────────────────────────────────────────────
+
+async function downloadReport(jobId) {
+  try {
+    const res = await fetch(`${API}/api/download/${jobId}`, { headers: apiHeaders() });
+    if (!res.ok) throw new Error('Download failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inspection_report_${jobId}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(`Download error: ${err.message}`);
   }
 }
 

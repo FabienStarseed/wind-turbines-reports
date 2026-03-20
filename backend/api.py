@@ -18,12 +18,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, BackgroundTasks
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, BackgroundTasks, Security, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # ─── APP SETUP ────────────────────────────────────────────────────────────────
+
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="BDDA — Blade Defect Detection Agent",
@@ -31,13 +37,32 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["POST", "GET", "DELETE"],
     allow_headers=["*"],
 )
+
+# ─── AUTH ─────────────────────────────────────────────────────────────────────
+
+_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+ALLOWED_EXTENSIONS = {".zip", ".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"}
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
+
+
+def verify_api_key(api_key: str = Security(_API_KEY_HEADER)):
+    expected = os.environ.get("BDDA_API_KEY", "")
+    if not expected or api_key != expected:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return api_key
 
 # ─── PATHS ────────────────────────────────────────────────────────────────────
 
@@ -261,8 +286,15 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
 def extract_upload(upload_file: UploadFile, dest_dir: Path) -> int:
     """Extract ZIP or save individual files. Returns image count."""
     filename = upload_file.filename or ""
+    suffix = Path(filename).suffix
+    if suffix not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
+
     dest_dir.mkdir(parents=True, exist_ok=True)
     content = upload_file.file.read()
+
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Upload exceeds 500 MB limit")
 
     if filename.lower().endswith(".zip"):
         zip_path = dest_dir / "upload.zip"
@@ -284,7 +316,9 @@ def extract_upload(upload_file: UploadFile, dest_dir: Path) -> int:
 # ─── ENDPOINTS ────────────────────────────────────────────────────────────────
 
 @app.post("/api/upload")
+@limiter.limit("10/hour")
 async def upload_inspection(
+    request: Request,
     background_tasks: BackgroundTasks,
     turbine_id: str = Form(...),
     site_name: str = Form(...),
@@ -304,6 +338,7 @@ async def upload_inspection(
     drone_model: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     images: UploadFile = File(...),
+    _: str = Depends(verify_api_key),
 ):
     job_id = str(uuid.uuid4())[:8]
     job_dir = JOBS_DIR / job_id
@@ -354,7 +389,8 @@ async def upload_inspection(
 
 
 @app.get("/api/status/{job_id}")
-async def get_status(job_id: str):
+@limiter.limit("60/minute")
+async def get_status(request: Request, job_id: str, _: str = Depends(verify_api_key)):
     state = get_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -388,7 +424,8 @@ async def get_status(job_id: str):
 
 
 @app.get("/api/debug/kimi")
-async def debug_kimi():
+@limiter.limit("5/hour")
+async def debug_kimi(request: Request, _: str = Depends(verify_api_key)):
     """Test Kimi API directly — returns raw response for diagnosis."""
     import base64, io, re
     from PIL import Image as PILImage
@@ -440,7 +477,8 @@ async def debug_kimi():
 
 
 @app.get("/api/download/{job_id}")
-async def download_report(job_id: str):
+@limiter.limit("30/hour")
+async def download_report(request: Request, job_id: str, _: str = Depends(verify_api_key)):
     state = get_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -463,7 +501,8 @@ async def download_report(job_id: str):
 
 
 @app.get("/api/jobs")
-async def list_jobs():
+@limiter.limit("30/minute")
+async def list_jobs(request: Request, _: str = Depends(verify_api_key)):
     """List recent jobs (last 20)."""
     jobs = []
     for state_file in sorted(JOBS_DIR.glob("*/state.json"), reverse=True)[:20]:
@@ -483,7 +522,8 @@ async def list_jobs():
 
 
 @app.delete("/api/jobs/{job_id}")
-async def delete_job(job_id: str):
+@limiter.limit("20/hour")
+async def delete_job(request: Request, job_id: str, _: str = Depends(verify_api_key)):
     job_dir = JOBS_DIR / job_id
     if job_dir.exists():
         shutil.rmtree(job_dir)
@@ -494,13 +534,13 @@ async def delete_job(job_id: str):
 # ─── HEALTH ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
-async def health():
+async def health(_: str = Depends(verify_api_key)):
     keys = {
         "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),
         "KIMI_API_KEY": bool(os.environ.get("KIMI_API_KEY")),
     }
-    return {"status": "ok", "api_keys": keys, "jobs_dir": str(JOBS_DIR)}
+    return {"status": "ok", "api_keys": keys}
 
 
 # ─── STATIC FILES ────────────────────────────────────────────────────────────
