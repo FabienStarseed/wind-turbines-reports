@@ -5,8 +5,8 @@
 
 const API = '';  // Same-origin; set to 'http://localhost:8000' for local dev
 
-// API key injected at build/deploy time via BDDA_FRONTEND_KEY env var (Render replaces __BDDA_KEY__)
-const API_KEY = window.BDDA_API_KEY || '__BDDA_KEY__';
+// API key injected server-side into window.BDDA_API_KEY by FastAPI before serving index.html
+const API_KEY = window.BDDA_API_KEY || '';
 
 function apiHeaders() {
   return { 'X-API-Key': API_KEY };

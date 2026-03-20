@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, BackgroundTasks, Security, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -543,10 +543,20 @@ async def health(_: str = Depends(verify_api_key)):
     return {"status": "ok", "api_keys": keys}
 
 
-# ─── STATIC FILES ────────────────────────────────────────────────────────────
+# ─── FRONTEND SERVE ──────────────────────────────────────────────────────────
+# Serve index.html dynamically so we can inject window.BDDA_API_KEY at runtime.
+# Static assets (app.js, style.css) are served from /static/.
 
 if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def serve_index():
+        html = (FRONTEND_DIR / "index.html").read_text()
+        api_key = os.environ.get("BDDA_API_KEY", "")
+        inject = f'<script>window.BDDA_API_KEY = "{api_key}";</script>\n'
+        html = html.replace("<script src=\"app.js\">", inject + "<script src=\"/static/app.js\">")
+        return HTMLResponse(content=html)
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
