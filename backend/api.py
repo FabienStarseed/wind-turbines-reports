@@ -534,7 +534,14 @@ async def delete_job(request: Request, job_id: str, _: str = Depends(verify_api_
 # ─── HEALTH ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
-async def health(_: str = Depends(verify_api_key)):
+async def health():
+    """Public health check for Render uptime monitoring."""
+    return {"status": "ok"}
+
+
+@app.get("/api/config")
+async def config(_: str = Depends(verify_api_key)):
+    """Authenticated endpoint — returns API key configuration status."""
     keys = {
         "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),

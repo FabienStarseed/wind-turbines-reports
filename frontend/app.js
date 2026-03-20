@@ -42,7 +42,7 @@ const apiStatus     = document.getElementById('apiStatus');
 
 async function checkApiHealth() {
   try {
-    const res = await fetch(`${API}/api/health`, { headers: apiHeaders() });
+    const res = await fetch(`${API}/api/config`, { headers: apiHeaders() });
     if (!res.ok) throw new Error('API not reachable');
     const data = await res.json();
 

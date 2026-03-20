@@ -13,3 +13,7 @@ services:
         sync: false
       - key: KIMI_API_KEY
         sync: false
+      - key: BDDA_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
