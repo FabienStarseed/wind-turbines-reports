@@ -52,8 +52,8 @@ ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 
 # ─── COST ESTIMATION ──────────────────────────────────────────────────────────
 
-INPUT_PRICE  = 5.0 / 1_000_000   # $ per token, claude-opus-4-6
-OUTPUT_PRICE = 25.0 / 1_000_000  # $ per token, claude-opus-4-6
+INPUT_PRICE  = 0.10 / 1_000_000   # $ per token, gemini-2.0-flash
+OUTPUT_PRICE = 0.40 / 1_000_000  # $ per token, gemini-2.0-flash
 
 
 def estimate_cost(image_count: int) -> dict:
@@ -226,16 +226,16 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         set_stage(job_id, "triaging", f"Screening {len(images)} images for defects...")
 
         # ── Stage 2: Triage ──
-        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        google_key = os.environ.get("GOOGLE_API_KEY", "")
         cost_limit_usd = float(os.environ.get("COST_LIMIT_USD", "999999"))
         running_cost = 0.0
 
-        if not anthropic_key:
-            raise RuntimeError("ANTHROPIC_API_KEY not set — pipeline requires Anthropic API key")
+        if not google_key:
+            raise RuntimeError("GOOGLE_API_KEY not set — pipeline requires Google API key")
 
         summary = triage_batch(
             images,
-            anthropic_key,
+            google_key,
             n_tiles=4,
             location_type=turbine_meta.get("location_type", "onshore"),
             turbine_model=turbine_meta.get("turbine_model", ""),
@@ -297,7 +297,7 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
         classify_results = classify_batch(
             flagged[:80],  # cap at 80 images
             turbine_meta.get("turbine_model", "Unknown"),
-            anthropic_key,
+            google_key,
             verbose=False,
         )
         save_classify_results(classify_results, classify_path)
@@ -320,7 +320,7 @@ def run_pipeline(job_id: str, job_dir: Path, turbine_meta: Dict):
             analyses, analyze_cost = analyze_critical_defects(
                 critical_findings,
                 turbine_meta.get("turbine_model", "Unknown"),
-                anthropic_key,
+                google_key,
                 verbose=False,
             )
             save_analysis_results(analyses, analyze_path)
@@ -599,36 +599,25 @@ async def get_status(request: Request, job_id: str, current_user: dict = Depends
 
 @app.get("/api/debug/ai")
 async def debug_ai():
-    """Test Anthropic claude-opus-4-6 vision API — sends a test image, returns raw response."""
-    import base64, io
+    """Test Gemini 2.0 Flash vision API — sends a test image, returns raw response."""
+    import io
     from PIL import Image as PILImage
 
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not anthropic_key:
-        return {"error": "ANTHROPIC_API_KEY not set"}
+    google_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not google_key:
+        return {"error": "GOOGLE_API_KEY not set"}
 
-    # Create a small 64x64 solid grey test image
     img = PILImage.new("RGB", (64, 64), color=(128, 128, 128))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=60)
-    b64 = base64.b64encode(buf.getvalue()).decode()
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=anthropic_key)
-        response = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=100,
-            system="You are a test assistant.",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-                    {"type": "text", "text": 'Reply ONLY with valid JSON: {"status": "ok", "model": "claude-opus-4-6", "vision": true}'},
-                ],
-            }],
+        import google.generativeai as genai
+        genai.configure(api_key=google_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(
+            [img, 'Reply ONLY with valid JSON: {"status": "ok", "model": "gemini-2.0-flash", "vision": true}'],
+            generation_config=genai.types.GenerationConfig(max_output_tokens=100, temperature=0.0),
         )
-        raw = response.content[0].text.strip()
+        raw = response.text.strip()
         try:
             parsed = json.loads(raw)
             parse_ok = True
@@ -636,10 +625,11 @@ async def debug_ai():
             parsed = None
             parse_ok = str(pe)
 
+        usage = response.usage_metadata
         return {
-            "model": "claude-opus-4-6",
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
+            "model": "gemini-2.0-flash",
+            "input_tokens": usage.prompt_token_count,
+            "output_tokens": usage.candidates_token_count,
             "raw_response": raw,
             "parse_ok": parse_ok,
             "parsed": parsed,
@@ -711,11 +701,20 @@ async def delete_job(job_id: str, current_user: dict = Depends(get_current_user)
 
 @app.get("/api/health")
 async def health():
-    keys = {
-        "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
-        "COST_LIMIT_USD": os.environ.get("COST_LIMIT_USD", "not set"),
+    """Public health check for Render uptime monitoring."""
+    return {"status": "ok"}
+
+
+@app.get("/api/config")
+async def config(_: str = Depends(get_current_user)):
+    """Authenticated — returns API key configuration status."""
+    return {
+        "status": "ok",
+        "api_keys": {
+            "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),
+            "COST_LIMIT_USD": os.environ.get("COST_LIMIT_USD", "not set"),
+        },
     }
-    return {"status": "ok", "api_keys": keys, "jobs_dir": str(JOBS_DIR), "data_dir": str(DATA_DIR)}
 
 
 # ─── LOGIN PAGE ───────────────────────────────────────────────────────────────

@@ -20,7 +20,7 @@ services:
       mountPath: /data
       sizeGB: 1
     envVars:
-      - key: ANTHROPIC_API_KEY
+      - key: GOOGLE_API_KEY
         sync: false
       - key: COST_LIMIT_USD
         sync: false

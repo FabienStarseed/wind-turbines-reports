@@ -1,9 +1,8 @@
 """
-analyze.py — Stage 3: Deep analysis of Cat 4–5 defects using Claude Opus 4.6
+analyze.py — Stage 3: Deep analysis of Cat 4+ defects using Gemini 2.0 Flash
 Provides root cause, failure risk, Vestas SMP recommendation, and cost estimate.
 
-Only runs on Cat 4–5 defects — ~10-20 findings per turbine.
-~$8/turbine for deep analysis.
+Only runs on Cat 4+ defects — ~10-20 findings per turbine.
 """
 
 import os
@@ -13,6 +12,8 @@ import base64
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
+
+import google.generativeai as genai
 
 # ─── ANALYSIS PROMPT ─────────────────────────────────────────────────────────
 
@@ -60,13 +61,13 @@ Please provide a professional engineering assessment for the Vestas maintenance 
    Reason if Yes.
 
 Return ONLY valid JSON, no other text:
-{
+{{
   "root_cause": "<string>",
-  "failure_risk": {
+  "failure_risk": {{
     "progression_risk": "<string>",
     "failure_mode": "<string>",
     "safety_risk": "Low | Medium | High | Critical"
-  },
+  }},
   "vestas_standard": "<string>",
   "recommended_action": "<string>",
   "repair_timeframe": "Immediate | 30 days | 3 months | 6 months | Next service",
@@ -75,7 +76,7 @@ Return ONLY valid JSON, no other text:
   "engineer_review_reason": "<string or null>",
   "analysis_confidence": 0.0-1.0,
   "additional_notes": "<any other professional observations>"
-}"""
+}}"""
 
 
 # ─── DATA STRUCTURES ──────────────────────────────────────────────────────────
@@ -103,9 +104,16 @@ class DeepAnalysis:
     error: Optional[str] = None
 
 
-# ─── CLAUDE API CLIENT ───────────────────────────────────────────────────────
+# ─── GEMINI API CLIENT ────────────────────────────────────────────────────────
 
-def call_claude_analyze(
+# Gemini 2.0 Flash pricing (per million tokens)
+_INPUT_COST_PER_TOKEN  = 0.10 / 1_000_000
+_OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000
+
+_MODEL = "gemini-2.0-flash"
+
+
+def call_gemini_analyze(
     defect: Dict,
     turbine_model: str,
     api_key: str,
@@ -113,16 +121,11 @@ def call_claude_analyze(
     max_retries: int = 3,
     location_type: str = "onshore",
 ) -> Dict:
-    """
-    Call Claude Opus 4.6 for deep defect analysis.
-    Optionally includes the image for visual reasoning.
-    """
-    try:
-        import anthropic
-    except ImportError:
-        raise RuntimeError("Install anthropic: pip install anthropic")
-
-    client = anthropic.Anthropic(api_key=api_key)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(
+        model_name=_MODEL,
+        system_instruction=ANALYZE_SYSTEM_PROMPT,
+    )
 
     offshore_note = (
         "IMPORTANT: This is an OFFSHORE turbine. Repair access is significantly more expensive and difficult. "
@@ -146,41 +149,34 @@ def call_claude_analyze(
         offshore_note=offshore_note,
     )
 
-    # Build message content
     content = []
 
-    # Optionally include the image
     if include_image and defect.get("image_path"):
         img_path = Path(defect["image_path"])
         if img_path.exists():
             try:
-                with open(img_path, "rb") as f:
-                    image_bytes = f.read()
-                image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-                content.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/jpeg",
-                        "data": image_b64,
-                    },
-                })
+                from PIL import Image as PILImage
+                with PILImage.open(img_path) as img:
+                    if img.mode != "RGB":
+                        img = img.convert("RGB")
+                    img.thumbnail((1568, 1568), PILImage.LANCZOS)
+                    content.append(img.copy())
             except Exception:
-                pass  # Proceed without image
+                pass
 
-    content.append({"type": "text", "text": prompt})
+    content.append(prompt)
 
     for attempt in range(max_retries):
         try:
-            response = client.messages.create(
-                model="claude-opus-4-6",
-                max_tokens=1500,
-                system=ANALYZE_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": content}],
+            response = model.generate_content(
+                content,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=1500,
+                    temperature=0.1,
+                ),
             )
-            raw = response.content[0].text.strip()
+            raw = response.text.strip()
 
-            # Strip markdown fences
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
@@ -188,29 +184,30 @@ def call_claude_analyze(
             raw = raw.strip()
 
             parsed = json.loads(raw)
-            parsed["input_tokens"] = response.usage.input_tokens
-            parsed["output_tokens"] = response.usage.output_tokens
+            usage = response.usage_metadata
+            parsed["input_tokens"] = usage.prompt_token_count or 0
+            parsed["output_tokens"] = usage.candidates_token_count or 0
             return parsed
 
         except json.JSONDecodeError as e:
             if attempt == max_retries - 1:
-                return {"error": f"JSON parse: {e}", "raw": raw[:200]}
+                return {"error": f"JSON parse: {e}"}
             time.sleep(1)
-        except (anthropic.RateLimitError, anthropic.OverloadedError):
-            if attempt == max_retries - 1:
-                return {"error": "rate_limit_or_overloaded"}
-            sleep_time = (2 ** attempt) * 10  # 10s, 20s, 40s
-            time.sleep(sleep_time)
-            continue
-        except (anthropic.APIConnectionError, anthropic.APITimeoutError):
-            if attempt == max_retries - 1:
-                return {"error": "connection_or_timeout"}
-            time.sleep(2 ** attempt)
-            continue
         except Exception as e:
-            if attempt == max_retries - 1:
-                return {"error": str(e)}
-            time.sleep(2 ** attempt)
+            err_str = str(e).lower()
+            if "quota" in err_str or "rate" in err_str or "429" in err_str:
+                sleep_time = (2 ** attempt) * 10
+                if attempt == max_retries - 1:
+                    return {"error": "rate_limit"}
+                time.sleep(sleep_time)
+            elif "500" in err_str or "503" in err_str:
+                if attempt == max_retries - 1:
+                    return {"error": f"server_error: {e}"}
+                time.sleep(2 ** attempt)
+            else:
+                if attempt == max_retries - 1:
+                    return {"error": str(e)}
+                time.sleep(2 ** attempt)
 
     return {"error": "Max retries exceeded"}
 
@@ -223,13 +220,8 @@ def analyze_defect(
     api_key: str,
     include_image: bool = True,
 ) -> DeepAnalysis:
-    """Deep analysis for a single Cat 4+ defect."""
-
-    raw = call_claude_analyze(
-        defect,
-        turbine_model,
-        api_key,
-        include_image,
+    raw = call_gemini_analyze(
+        defect, turbine_model, api_key, include_image,
         location_type=defect.get("location_type", "onshore"),
     )
 
@@ -257,8 +249,8 @@ def analyze_defect(
         )
 
     cost_usd = (
-        raw.get("input_tokens", 0) * 5.0 / 1_000_000
-        + raw.get("output_tokens", 0) * 25.0 / 1_000_000
+        raw.get("input_tokens", 0) * _INPUT_COST_PER_TOKEN
+        + raw.get("output_tokens", 0) * _OUTPUT_COST_PER_TOKEN
     )
 
     return DeepAnalysis(
@@ -289,22 +281,14 @@ def analyze_critical_defects(
     critical_findings: List[Dict],
     turbine_model: str,
     api_key: str,
-    delay_between_calls: float = 3.0,
+    delay_between_calls: float = 2.0,
     verbose: bool = True,
 ) -> Tuple[List[DeepAnalysis], float]:
-    """
-    Run deep analysis on all Cat 4+ defect findings.
-
-    critical_findings: from classify.load_critical_findings()
-
-    Returns:
-        (results, total_cost_usd): list of DeepAnalysis objects and total cost in USD
-    """
     results = []
     total = len(critical_findings)
 
     if verbose:
-        print(f"\nDeep analysis: {total} critical findings (Cat 4+)...")
+        print(f"\nDeep analysis: {total} critical findings (Cat 4+, model: {_MODEL})...")
 
     for i, defect in enumerate(critical_findings):
         if verbose:
@@ -320,7 +304,6 @@ def analyze_critical_defects(
             if verbose:
                 safety = analysis.failure_risk.get("safety_risk", "Unknown")
                 print(f"    Safety risk: {safety} | Review needed: {analysis.engineer_review_required}")
-                print(f"    Action: {analysis.recommended_action[:80]}...")
 
         if delay_between_calls > 0:
             time.sleep(delay_between_calls)
@@ -328,14 +311,15 @@ def analyze_critical_defects(
     if verbose:
         review_needed = sum(1 for a in results if a.engineer_review_required)
         critical_risk = sum(1 for a in results if a.failure_risk.get("safety_risk") == "Critical")
+        total_cost = sum(a.cost_usd for a in results)
         print(f"\nAnalysis complete: {review_needed}/{total} need engineer review, {critical_risk} critical safety risk")
+        print(f"Analyze cost: ${total_cost:.4f}")
 
     total_cost = sum(a.cost_usd for a in results)
     return results, total_cost
 
 
 def save_analysis_results(results: List[DeepAnalysis], output_path: Path):
-    """Save deep analysis results to JSON for report generation."""
     data = [
         {
             "defect_name": a.defect_name,
@@ -369,11 +353,6 @@ def save_analysis_results(results: List[DeepAnalysis], output_path: Path):
 
 
 if __name__ == "__main__":
-    print("analyze.py — Stage 3 Claude Opus 4.6 deep analysis module")
-    print("Usage: import analyze and call analyze_critical_defects(findings, turbine_model, api_key)")
-
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if key:
-        print("ANTHROPIC_API_KEY found in environment")
-    else:
-        print("ANTHROPIC_API_KEY not set")
+    print("analyze.py — Stage 3 Gemini 2.0 Flash deep analysis module")
+    key = os.environ.get("GOOGLE_API_KEY")
+    print("GOOGLE_API_KEY found" if key else "GOOGLE_API_KEY not set")

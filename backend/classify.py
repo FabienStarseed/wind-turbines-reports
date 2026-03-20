@@ -1,11 +1,9 @@
 """
-classify.py — Stage 2: Defect classification using Claude Opus 4.6
+classify.py — Stage 2: Defect classification using Gemini 2.0 Flash
 Takes flagged images from triage, returns structured defect JSON per image.
 
-Claude Opus 4.6 chosen for classification:
-- Anthropic SDK unified with triage and analysis stages
-- IEC 61400 / DNVGL-ST-0376 dual scoring (IEC Cat 0-4 + BDDA 0-10)
-- Image resized to max 1568px before encoding (Anthropic vision limit)
+IEC 61400 / DNVGL-ST-0376 dual scoring (IEC Cat 0-4 + BDDA 0-10).
+Image resized to max 1568px before encoding.
 """
 
 import os
@@ -17,7 +15,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
-import anthropic
+import google.generativeai as genai
 from taxonomy import build_taxonomy_prompt_block, DEFECTS, get_urgency_for_category
 
 # ─── CLASSIFICATION PROMPT ────────────────────────────────────────────────────
@@ -54,41 +52,40 @@ For each defect identified, return one entry with:
 - ndt_recommended: true/false
 
 Return ONLY valid JSON:
-{
+{{
   "defects": [...],
   "image_quality": "good" / "acceptable" / "poor",
   "image_notes": "<notes>"
-}
+}}
 
-If no defects found: {"defects": [], "image_quality": "good", "image_notes": ""}"""
+If no defects found: {{"defects": [], "image_quality": "good", "image_notes": ""}}"""
 
 
 # ─── SCORING UTILITIES ────────────────────────────────────────────────────────
 
-# Claude Opus 4.6 pricing (per million tokens)
-_INPUT_COST_PER_TOKEN = 5.0 / 1_000_000    # $5/M input tokens (claude-opus-4-6)
-_OUTPUT_COST_PER_TOKEN = 25.0 / 1_000_000  # $25/M output tokens (claude-opus-4-6)
+# Gemini 2.0 Flash pricing (per million tokens)
+_INPUT_COST_PER_TOKEN  = 0.10 / 1_000_000
+_OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000
 
 # IEC Cat 0-4 → BDDA 0-10 midpoint mapping
 _IEC_TO_BDDA = {0: 0, 1: 1, 2: 3, 3: 6, 4: 9}
 
+_MODEL = "gemini-2.0-flash"
+
 
 def iec_to_bdda(iec_cat: int) -> int:
-    """Return midpoint BDDA score (0-10) for an IEC category (0-4)."""
     return _IEC_TO_BDDA.get(iec_cat, 0)
 
 
-def load_and_resize_image(image_path: Path, max_edge: int = 1568) -> str:
-    """Load image, resize if longest edge > max_edge, return raw base64 string (no data URI prefix)."""
+def load_and_resize_image(image_path: Path, max_edge: int = 1568):
+    """Load image, resize if needed, return PIL Image."""
     from PIL import Image
     with Image.open(image_path) as img:
         if img.mode != "RGB":
             img = img.convert("RGB")
         if max(img.size) > max_edge:
             img.thumbnail((max_edge, max_edge), Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        return base64.b64encode(buf.getvalue()).decode("utf-8")
+        return img.copy()
 
 
 # ─── DATA STRUCTURES ──────────────────────────────────────────────────────────
@@ -106,7 +103,6 @@ class DefectFinding:
     confidence: float
     visual_description: str
     ndt_recommended: bool
-    # Added by classify pipeline:
     image_path: str = ""
     turbine_id: str = ""
     blade: str = ""
@@ -138,28 +134,23 @@ class ClassifyResult:
         return any(d.iec_category >= 3 for d in self.defects)
 
 
-# ─── ANTHROPIC API CLIENT ─────────────────────────────────────────────────────
+# ─── GEMINI API CLIENT ────────────────────────────────────────────────────────
 
-def call_claude_classify(
+def call_gemini_classify(
     image_path: Path,
     image_info: Dict,
     turbine_model: str,
     api_key: str,
-    model: str = "claude-opus-4-6",
     max_retries: int = 3,
 ) -> Dict:
-    """
-    Call Claude Opus 4.6 with full image for defect classification.
-    Image is resized to max 1568px longest edge before base64 encoding.
-    Returns parsed JSON dict with defects list and token usage.
-    """
-    client = anthropic.Anthropic(api_key=api_key)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(
+        model_name=_MODEL,
+        system_instruction=CLASSIFY_SYSTEM_PROMPT,
+    )
 
-    # Build taxonomy block
     taxonomy_block = build_taxonomy_prompt_block()
-
-    # Load and resize image — raw base64, no data URI prefix
-    image_b64 = load_and_resize_image(image_path)
+    pil_img = load_and_resize_image(image_path)
 
     user_prompt = CLASSIFY_USER_PROMPT.format(
         turbine_id=image_info["turbine_id"],
@@ -173,29 +164,17 @@ def call_claude_classify(
         taxonomy_block=taxonomy_block,
     )
 
-    content = [
-        {
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/jpeg",
-                "data": image_b64,
-            },
-        },
-        {"type": "text", "text": user_prompt},
-    ]
-
     for attempt in range(max_retries):
         try:
-            response = client.messages.create(
-                model=model,
-                max_tokens=2000,
-                system=CLASSIFY_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": content}],
+            response = model.generate_content(
+                [pil_img, user_prompt],
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=2000,
+                    temperature=0.1,
+                ),
             )
-            raw = response.content[0].text.strip()
+            raw = response.text.strip()
 
-            # Strip markdown fences if present
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
@@ -203,27 +182,23 @@ def call_claude_classify(
             raw = raw.strip()
 
             result = json.loads(raw)
-            result["input_tokens"] = response.usage.input_tokens
-            result["output_tokens"] = response.usage.output_tokens
+            usage = response.usage_metadata
+            result["input_tokens"] = usage.prompt_token_count or 0
+            result["output_tokens"] = usage.candidates_token_count or 0
             return result
 
         except json.JSONDecodeError:
-            # Treat as no defects — safer than flagging, do not retry
             return {"error": "json_parse_fail", "defects": []}
-
-        except anthropic.RateLimitError:
-            time.sleep((2 ** attempt) * 10)
-        except anthropic.APIStatusError as e:
-            if e.status_code >= 500:
+        except Exception as e:
+            err_str = str(e).lower()
+            if "quota" in err_str or "rate" in err_str or "429" in err_str:
+                time.sleep((2 ** attempt) * 10)
+            elif "500" in err_str or "503" in err_str:
                 time.sleep(2 ** attempt)
             else:
-                raise
-        except (anthropic.APIConnectionError, anthropic.APITimeoutError):
-            time.sleep(2 ** attempt)
-        except Exception as e:
-            if attempt == max_retries - 1:
-                return {"error": str(e)}
-            time.sleep(2 ** attempt)
+                if attempt == max_retries - 1:
+                    return {"error": str(e)}
+                time.sleep(2 ** attempt)
 
     return {"error": "Max retries exceeded"}
 
@@ -236,16 +211,9 @@ def classify_image(
     api_key: str,
     min_confidence: float = 0.3,
 ) -> ClassifyResult:
-    """
-    Classify defects in a single flagged image.
-
-    image_info: dict with path, turbine_id, blade, zone, position, mission_folder, defect_hint, location_type
-    """
     path = Path(image_info["path"])
+    raw = call_gemini_classify(path, image_info, turbine_model, api_key)
 
-    raw = call_claude_classify(path, image_info, turbine_model, api_key)
-
-    # Calculate cost from token usage
     cost_usd = (
         raw.get("input_tokens", 0) * _INPUT_COST_PER_TOKEN
         + raw.get("output_tokens", 0) * _OUTPUT_COST_PER_TOKEN
@@ -269,11 +237,8 @@ def classify_image(
         if confidence < min_confidence:
             continue
 
-        # Derive IEC category and BDDA score (always derive bdda_score for consistency)
         iec_category = int(d.get("iec_category", 0))
         bdda_score = iec_to_bdda(iec_category)
-
-        # Auto-derive urgency from iec_category if not provided
         urgency = d.get("urgency") or get_urgency_for_category(iec_category)
 
         finding = DefectFinding(
@@ -318,16 +283,11 @@ def classify_batch(
     delay_between_calls: float = 2.0,
     verbose: bool = True,
 ) -> List[ClassifyResult]:
-    """
-    Classify defects in all flagged images.
-
-    flagged_images: list from triage output (only has_defect=True images)
-    """
     results = []
     total = len(flagged_images)
 
     if verbose:
-        print(f"\nClassifying {total} flagged images...")
+        print(f"\nClassifying {total} flagged images (model: {_MODEL})...")
 
     for i, img_info in enumerate(flagged_images):
         if verbose:
@@ -346,7 +306,7 @@ def classify_batch(
                     print(f"    -> IEC Cat{d.iec_category} BDDA{d.bdda_score} {d.defect_name} (conf={d.confidence:.2f}){flag}")
         else:
             if verbose:
-                print(f"    -> No defects found in classification (false positive in triage)")
+                print(f"    -> No defects found (false positive in triage)")
 
         if delay_between_calls > 0:
             time.sleep(delay_between_calls)
@@ -355,14 +315,13 @@ def classify_batch(
         total_defects = sum(len(r.defects) for r in results)
         critical = sum(1 for r in results if r.has_critical)
         total_cost = sum(r.cost_usd for r in results)
-        print(f"\nClassification complete: {total_defects} defects found, {critical} images with IEC Cat3+ findings")
-        print(f"Classify stage cost: ${total_cost:.4f}")
+        print(f"\nClassification complete: {total_defects} defects, {critical} images with IEC Cat3+ findings")
+        print(f"Classify cost: ${total_cost:.4f}")
 
     return results
 
 
 def save_classify_results(results: List[ClassifyResult], output_path: Path):
-    """Save classification results to JSON for analysis stage."""
     data = [
         {
             "image_path": str(r.image_path),
@@ -405,12 +364,6 @@ def save_classify_results(results: List[ClassifyResult], output_path: Path):
 
 
 def load_critical_findings(classify_json_path: Path, min_category: int = 4) -> List[Dict]:
-    """Load findings above min_category threshold for deep analysis.
-
-    Uses iec_category field (IEC 61400 scale 0-4).
-    IEC Cat 3+ is 'Urgent' (planned repair within 3 months) — a reasonable cutoff for deep analysis.
-    Default min_category=4 preserves existing behavior in api.py callers.
-    """
     with open(classify_json_path) as f:
         data = json.load(f)
 
@@ -431,12 +384,6 @@ def load_critical_findings(classify_json_path: Path, min_category: int = 4) -> L
 
 
 if __name__ == "__main__":
-    print("classify.py — Stage 2 Claude Opus 4.6 classification module")
-    print("Usage: import classify and call classify_batch(flagged_images, turbine_model, api_key)")
-    print("API key expected in env: ANTHROPIC_API_KEY")
-
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if key:
-        print("ANTHROPIC_API_KEY found in environment")
-    else:
-        print("ANTHROPIC_API_KEY not set — set it before running classification")
+    print("classify.py — Stage 2 Gemini 2.0 Flash classification module")
+    key = os.environ.get("GOOGLE_API_KEY")
+    print("GOOGLE_API_KEY found" if key else "GOOGLE_API_KEY not set")
