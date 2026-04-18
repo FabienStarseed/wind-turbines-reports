@@ -82,8 +82,283 @@
 
     <!-- NEW INSPECTION TAB -->
     <div x-show="activeTab==='new-inspection'">
-      <!-- Form content — populated in Plan 05-03 -->
-      <!-- Progress tracker — populated in Plan 05-03 -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+
+        <!-- ── FORM COLUMN (3/5) ────────────────────────────────────────── -->
+        <div class="lg:col-span-3">
+          <form @submit.prevent="submit()" enctype="multipart/form-data">
+
+            <!-- SECTION 1: TURBINE IDENTITY -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-2"
+                 @click="sections.identity = !sections.identity">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">TURBINE IDENTITY</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.identity ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.identity" x-transition>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Turbine ID <span class="text-[#FF006E]">*</span></label>
+                  <input type="text" name="turbine_id" placeholder="JAP19" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Turbine Model <span class="text-[#FF006E]">*</span></label>
+                  <input type="text" name="turbine_model" placeholder="Vestas V150-4.5" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Site Name <span class="text-[#FF006E]">*</span></label>
+                  <input type="text" name="site_name" placeholder="Akita Offshore Wind" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Country <span class="text-[#FF006E]">*</span></label>
+                  <select name="country" required class="cyber-input w-full">
+                    <option value="">— Select —</option>
+                    <option>Japan</option>
+                    <option>Philippines</option>
+                    <option>Taiwan</option>
+                    <option>Australia</option>
+                    <option>Vietnam</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-x-4 mb-4">
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Hub Height (m)</label>
+                  <input type="number" name="hub_height_m" placeholder="120" step="0.1" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Rotor Diam (m)</label>
+                  <input type="number" name="rotor_diameter_m" placeholder="150" step="0.1" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Blade Length (m)</label>
+                  <input type="number" name="blade_length_m" placeholder="73" step="0.1" class="cyber-input w-full">
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-x-4 mb-4">
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">GPS Latitude</label>
+                  <input type="text" name="gps_lat" placeholder="39.7192" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">GPS Longitude</label>
+                  <input type="text" name="gps_lon" placeholder="140.1023" class="cyber-input w-full">
+                </div>
+              </div>
+            </div>
+
+            <!-- SECTION 2: INSPECTION DETAILS -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-6"
+                 @click="sections.details = !sections.details">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">INSPECTION DETAILS</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.details ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.details" x-transition>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Inspector Name <span class="text-[#FF006E]">*</span></label>
+                  <input type="text" name="inspector_name" placeholder="Tanaka Hiroshi" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Inspection Date <span class="text-[#FF006E]">*</span></label>
+                  <input type="date" name="inspection_date" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4 sm:col-span-2">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Drone Model</label>
+                  <input type="text" name="drone_model" value="DJI Matrice 300 RTK" class="cyber-input w-full">
+                </div>
+              </div>
+            </div>
+
+            <!-- SECTION 3: ENVIRONMENTAL CONDITIONS -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-6"
+                 @click="sections.environment = !sections.environment">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">ENVIRONMENTAL CONDITIONS</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.environment ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.environment" x-transition>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 mb-4">
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Weather</label>
+                  <input type="text" name="weather" placeholder="Partly cloudy" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Wind (m/s)</label>
+                  <input type="number" name="wind_speed_ms" placeholder="4.2" step="0.1" min="0" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Temp (°C)</label>
+                  <input type="number" name="temperature_c" placeholder="18" step="0.1" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Visibility (km)</label>
+                  <input type="number" name="visibility_km" placeholder="15" step="0.1" min="0" class="cyber-input w-full">
+                </div>
+              </div>
+            </div>
+
+            <!-- SECTION 4: INSPECTION NOTES -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-6"
+                 @click="sections.notes = !sections.notes">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">INSPECTION NOTES</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.notes ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.notes" x-transition>
+              <div class="mb-4">
+                <textarea name="notes" rows="3" class="cyber-input w-full resize-none"
+                          placeholder="Limitations, blade access issues, weather notes…"></textarea>
+              </div>
+            </div>
+
+            <!-- SECTION 5: UPLOAD IMAGES -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-6"
+                 @click="sections.upload = !sections.upload">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">UPLOAD IMAGES</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.upload ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.upload" x-transition>
+              <div class="relative border-2 border-dashed rounded-sm transition-colors mt-1"
+                   :class="fileSelected ? 'border-[#00FF88] bg-[#00FF88]/5' : 'border-white/10 bg-white/[0.02]'"
+                   @dragover.prevent
+                   @drop.prevent="handleDrop($event)">
+                <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required
+                       class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                       @change="handleFileChange($event)">
+                <template x-if="!fileSelected">
+                  <div class="text-center py-10 pointer-events-none">
+                    <div class="text-3xl mb-3">📁</div>
+                    <div class="font-mono text-xs text-white/40 uppercase tracking-wider">DROP ZIP OR CLICK TO SELECT</div>
+                    <div class="font-mono text-[10px] text-white/20 mt-1">ZIP (DJI folder) · JPG · PNG</div>
+                  </div>
+                </template>
+                <template x-if="fileSelected">
+                  <div class="flex items-center gap-3 py-5 px-5 pointer-events-none">
+                    <span class="text-[#00FF88] font-mono">✓</span>
+                    <div>
+                      <div class="font-mono text-sm text-[#00FF88]" x-text="fileName"></div>
+                      <div class="font-mono text-[10px] text-white/30 mt-0.5" x-text="fileSize"></div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- SUBMIT -->
+            <button type="submit" class="action-btn mt-6 w-full justify-center"
+                    :disabled="submitting" :style="submitting ? 'opacity:0.45' : ''">
+              <span x-show="!submitting">▶ GENERATE INSPECTION REPORT</span>
+              <span x-show="submitting">UPLOADING…</span>
+            </button>
+
+          </form>
+        </div>
+
+        <!-- ── PROGRESS COLUMN (2/5) ─────────────────────────────────────── -->
+        <div class="lg:col-span-2">
+
+          <!-- Empty state -->
+          <template x-if="!jobId">
+            <div class="border border-white/[0.06] p-6 text-center mt-2">
+              <div class="font-mono text-xs text-white/20 uppercase tracking-widest">NO INSPECTIONS YET</div>
+              <div class="font-mono text-[32px] text-white/10 mt-2">–</div>
+            </div>
+          </template>
+
+          <!-- Active / complete / error job panel -->
+          <template x-if="jobId">
+            <div class="border border-white/[0.06] p-5">
+
+              <!-- Job ID header -->
+              <div class="font-mono text-[10px] text-white/30 uppercase tracking-wider mb-4"
+                   x-text="'JOB ' + jobId?.slice(0,8).toUpperCase()"></div>
+
+              <!-- Stage dots -->
+              <div class="space-y-2 mb-5">
+                <template x-for="(s, i) in stages" :key="s.key">
+                  <div class="flex items-center gap-3">
+                    <div class="w-2 h-2 rounded-full flex-shrink-0 transition-colors"
+                         :class="{
+                           'bg-[#00FF88]': isDone(i),
+                           'bg-[#FFB800] pulse': isActive(i),
+                           'bg-[#FF006E]': isFailed(i),
+                           'bg-white/15': isPending(i),
+                         }"></div>
+                    <span class="font-mono text-xs uppercase tracking-wide transition-colors"
+                          :class="{
+                            'text-[#00FF88]': isDone(i),
+                            'text-[#FFB800]': isActive(i),
+                            'text-[#FF006E]': isFailed(i),
+                            'text-white/25': isPending(i),
+                          }">
+                      <span x-text="s.label"></span>
+                      <span x-show="isDone(i)" class="ml-1">✓</span>
+                      <span x-show="isFailed(i)" class="ml-1">✗</span>
+                    </span>
+                  </div>
+                </template>
+              </div>
+
+              <!-- Progress bar -->
+              <div class="h-[4px] w-full bg-white/10 overflow-hidden mb-3">
+                <div class="h-full transition-all duration-700"
+                     :style="`width: ${progress}%; background: ${progress >= 100 ? 'var(--green)' : 'linear-gradient(90deg, var(--amber), var(--cyan))'}`">
+                </div>
+              </div>
+
+              <!-- Status message -->
+              <div class="font-mono text-xs text-white/40 mb-4" x-text="message || stage || '—'"></div>
+
+              <!-- Stats row -->
+              <div x-show="totalImages || flaggedImages || criticalFindings" class="flex gap-4 mb-4">
+                <template x-if="totalImages">
+                  <span class="font-mono text-xs text-white/50"><span x-text="totalImages"></span> IMAGES</span>
+                </template>
+                <template x-if="flaggedImages">
+                  <span class="font-mono text-xs text-[#FFB800]"><span x-text="flaggedImages"></span> FLAGGED</span>
+                </template>
+                <template x-if="criticalFindings">
+                  <span class="font-mono text-xs text-[#FF006E]"><span x-text="criticalFindings"></span> CRITICAL</span>
+                </template>
+              </div>
+
+              <!-- COMPLETE state -->
+              <div x-show="stage === 'complete'" class="space-y-3">
+                <div class="font-mono text-xs text-[#00FF88] tracking-widest uppercase pulse text-center py-2 border border-[#00FF88]/30 bg-[#00FF88]/8">
+                  ✓ INSPECTION COMPLETE
+                </div>
+                <button class="action-btn w-full justify-center" @click="downloadReport(jobId)">
+                  ⬇ DOWNLOAD REPORT PDF
+                </button>
+                <label class="flex items-center gap-2 font-mono text-[10px] text-white/35 cursor-pointer">
+                  <input type="checkbox" x-model="autoRedirect" class="accent-[#00F5FF]">
+                  AUTO-REDIRECT TO HISTORY
+                </label>
+                <div x-show="autoRedirect && countdown > 0"
+                     class="font-mono text-[10px] text-white/25 text-center"
+                     x-text="'Redirecting in ' + countdown + 's…'"></div>
+              </div>
+
+              <!-- ERROR state -->
+              <div x-show="stage === 'error'" class="mt-2">
+                <div class="font-mono text-xs text-[#FF006E] border border-[#FF006E]/30 bg-[#FF006E]/8 px-3 py-2"
+                     x-text="pipelineError || 'Pipeline error. Check server logs.'"></div>
+              </div>
+
+            </div>
+          </template>
+
+        </div>
+      </div>
     </div>
 
     <!-- HISTORY TAB -->
@@ -159,6 +434,12 @@
               localStorage.setItem('bdda_username', this.username);
             } catch {}
           }
+          this.$nextTick(() => {
+            const dateInput = document.querySelector('input[name="inspection_date"]');
+            if (dateInput && !dateInput.value) {
+              dateInput.value = new Date().toISOString().split('T')[0];
+            }
+          });
         },
 
         // ── Auth ──
@@ -197,14 +478,128 @@
           return `${mon} ${day} \u00b7 ${time}`;
         },
 
-        // ── Method stubs (implemented in Plans 05-03 and 05-04) ──
-        handleFileChange(e) {},
-        handleDrop(e) {},
-        async submit() {},
-        startPolling(jobId) {},
-        stopPolling() {},
-        async pollOnce(jobId) {},
-        async downloadReport(jobId) {},
+        // ── File handling ──
+        handleFileChange(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          this.fileSelected = true;
+          this.fileName = file.name;
+          this.fileSize = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+        },
+
+        handleDrop(e) {
+          const file = e.dataTransfer.files[0];
+          if (!file) return;
+          const input = document.getElementById('fileInput');
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
+          this.fileSelected = true;
+          this.fileName = file.name;
+          this.fileSize = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+        },
+
+        // ── Submit ──
+        async submit() {
+          const fileInput = document.getElementById('fileInput');
+          if (!fileInput.files.length) return;
+
+          this.submitting = true;
+          this.jobId = null;
+          this.stage = null;
+          this.progress = 0;
+          this.message = '';
+          this.pipelineError = null;
+          this.downloadAvailable = false;
+
+          const formData = new FormData(document.querySelector('form'));
+          if (!formData.get('inspection_date')) {
+            formData.set('inspection_date', new Date().toISOString().split('T')[0]);
+          }
+
+          try {
+            const res = await this.apiFetch('/api/upload', { method: 'POST', body: formData });
+            if (!res || !res.ok) {
+              const err = await res?.json().catch(() => ({ detail: 'Upload failed' }));
+              throw new Error(err.detail || 'Upload failed');
+            }
+            const data = await res.json();
+            this.jobId = data.job_id;
+            this.totalImages = data.image_count || null;
+            this.startPolling(data.job_id);
+          } catch (err) {
+            this.pipelineError = err.message;
+            this.stage = 'error';
+          } finally {
+            this.submitting = false;
+          }
+        },
+
+        // ── Polling ──
+        startPolling(jobId) {
+          this.stopPolling();
+          this.isPolling = true;
+          this._pollTimer = setInterval(() => this.pollOnce(jobId), 2000);
+          this.pollOnce(jobId);
+        },
+
+        stopPolling() {
+          if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+          this.isPolling = false;
+        },
+
+        async pollOnce(jobId) {
+          try {
+            const res = await this.apiFetch(`/api/status/${jobId}`);
+            if (!res || !res.ok) return;
+            const s = await res.json();
+            this.stage = s.stage;
+            this.progress = s.progress >= 0 ? s.progress : 0;
+            this.message = s.message || '';
+            this.totalImages = s.total_images || this.totalImages;
+            this.flaggedImages = s.flagged_images || null;
+            this.criticalFindings = s.critical_findings || null;
+
+            if (s.stage === 'complete') {
+              this.stopPolling();
+              this.downloadAvailable = true;
+              this.progress = 100;
+              this.loadHistory();
+              if (this.autoRedirect) {
+                this.countdown = 3;
+                const tick = setInterval(() => {
+                  this.countdown--;
+                  if (this.countdown <= 0) {
+                    clearInterval(tick);
+                    this.activeTab = 'history';
+                  }
+                }, 1000);
+              }
+            }
+            if (s.stage === 'error' || s.stage === 'failed' || s.stage === 'cost_limit_exceeded') {
+              this.stage = 'error';
+              this.pipelineError = s.error || s.message || 'Pipeline failed.';
+              this.stopPolling();
+            }
+          } catch {
+            // Network error — keep polling
+          }
+        },
+
+        // ── Download (blob fetch — JWT-safe) ──
+        async downloadReport(jobId) {
+          const res = await this.apiFetch(`/api/download/${jobId}`);
+          if (!res || !res.ok) return;
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `inspection_${jobId}.pdf`;
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+
+        // ── History (stub — implemented in Plan 05-04) ──
         async loadHistory() {},
       }
     }
