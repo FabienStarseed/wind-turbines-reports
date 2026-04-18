@@ -1,83 +1,334 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BDDA — Login</title>
-    <style>
-        body { font-family: sans-serif; max-width: 400px; margin: 100px auto; padding: 0 20px; }
-        h1 { font-size: 1.4rem; margin-bottom: 1.5rem; }
-        label { display: block; margin-bottom: 0.25rem; font-size: 0.9rem; }
-        input { display: block; width: 100%; padding: 0.5rem; margin-bottom: 1rem;
-                box-sizing: border-box; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 0.6rem 1.5rem; font-size: 1rem; cursor: pointer; }
-        #error-msg { color: red; margin-top: 1rem; display: none; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWID — Inspector Login</title>
+
+  <!-- Tailwind Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: {
+          bg: '#050510',
+          cyan: '#00F5FF',
+          green: '#00FF88',
+          magenta: '#FF006E',
+          amber: '#FFB800',
+          purple: '#7B2FFF'
+        },
+        fontFamily: {
+          bebas: ['Bebas Neue', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+          syne: ['Syne', 'sans-serif'],
+          dmmono: ['DM Mono', 'monospace']
+        }
+      }}
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    [x-cloak] { display: none !important; }
+
+    /* Animated background layers */
+    .bg-gradient-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 30%, rgba(0, 245, 255, 0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 80% at 80% 70%, rgba(123, 47, 255, 0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 50% at 50% 50%, rgba(0, 255, 136, 0.03) 0%, transparent 70%);
+      animation: pulse-gradient 8s ease-in-out infinite alternate;
+    }
+
+    @keyframes pulse-gradient {
+      0%   { opacity: 0.8; transform: scale(1); }
+      100% { opacity: 1;   transform: scale(1.04); }
+    }
+
+    .bg-grid-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(0, 245, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 245, 255, 0.04) 1px, transparent 1px);
+      background-size: 60px 60px;
+      animation: grid-drift 20s linear infinite;
+    }
+
+    @keyframes grid-drift {
+      0%   { background-position: 0 0; }
+      100% { background-position: 60px 60px; }
+    }
+
+    .bg-scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.15) 2px,
+        rgba(0, 0, 0, 0.15) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* Card glow border */
+    .cyber-card {
+      border: 1px solid rgba(0, 245, 255, 0.15);
+      background: rgba(5, 5, 20, 0.75);
+      backdrop-filter: blur(12px);
+      position: relative;
+    }
+
+    .cyber-card::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      background: linear-gradient(135deg, rgba(0, 245, 255, 0.2) 0%, transparent 40%, rgba(123, 47, 255, 0.15) 100%);
+      z-index: -1;
+      border-radius: 2px;
+    }
+
+    /* Input styles */
+    .cyber-input {
+      display: block;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      padding: 0.6rem 0.75rem;
+      border-radius: 2px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .cyber-input:focus {
+      border-color: #00F5FF;
+      box-shadow: 0 0 0 1px rgba(0, 245, 255, 0.3);
+    }
+
+    .cyber-input::placeholder {
+      color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Action button */
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #00F5FF;
+      color: #050510;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      padding: 0.65rem 1.5rem;
+      border: none;
+      cursor: pointer;
+      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+      transition: background 0.15s, opacity 0.15s;
+      text-transform: uppercase;
+    }
+
+    .action-btn:hover:not(:disabled) {
+      background: #00FF88;
+    }
+
+    .action-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Logo gradient text */
+    .logo-text {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 3.5rem;
+      line-height: 1;
+      background: linear-gradient(90deg, #00F5FF 0%, #7B2FFF 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: 0.05em;
+    }
+
+    /* Separator line */
+    .cyber-sep {
+      border: none;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0, 245, 255, 0.2), transparent);
+    }
+  </style>
 </head>
-<body>
-    <h1>BDDA Inspector Login</h1>
-    <form id="login-form">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" autocomplete="username" required autofocus>
 
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" autocomplete="current-password" required>
+<body
+  x-data="loginApp()"
+  x-init="checkAlreadyLoggedIn()"
+  x-cloak
+  class="bg-[#050510] min-h-screen flex items-center justify-center relative overflow-hidden"
+>
+  <!-- Animated background layers -->
+  <div class="bg-gradient-layer" aria-hidden="true"></div>
+  <div class="bg-grid-layer" aria-hidden="true"></div>
+  <div class="bg-scanlines" aria-hidden="true"></div>
 
-        <button type="submit">Log in</button>
-        <p id="error-msg">Invalid credentials. Please try again.</p>
-    </form>
+  <!-- Login card -->
+  <div class="max-w-sm w-full mx-auto px-6 relative z-10">
+    <div class="cyber-card p-8">
 
-    <script>
-        // If already logged in, redirect away immediately
-        (function() {
-            const token = localStorage.getItem('bdda_token');
-            if (token) {
-                const params = new URLSearchParams(window.location.search);
-                window.location.href = params.get('next') || '/';
-            }
-        })();
+      <!-- AWID Branding -->
+      <div class="mb-6 text-center">
+        <div class="logo-text">AWID</div>
+        <div class="font-mono text-xs text-white/40 tracking-widest uppercase mt-1">
+          APAC Wind Inspections Drones
+        </div>
+      </div>
 
-        document.getElementById('login-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const errorEl = document.getElementById('error-msg');
-            errorEl.style.display = 'none';
+      <hr class="cyber-sep mb-6">
 
-            const formData = new FormData(this);
+      <!-- Section label -->
+      <div class="font-mono text-xs text-white/30 tracking-widest uppercase mb-5">
+        &gt; Inspector Auth
+      </div>
 
-            let resp;
-            try {
-                // CRITICAL: use URLSearchParams — OAuth2PasswordRequestForm requires
-                // application/x-www-form-urlencoded, NOT application/json
-                resp = await fetch('/api/auth/token', {
-                    method: 'POST',
-                    body: new URLSearchParams(formData),
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-                });
-            } catch (networkErr) {
-                errorEl.textContent = 'Network error — is the server running?';
-                errorEl.style.display = 'block';
-                return;
-            }
+      <!-- Login form -->
+      <form @submit.prevent="login()">
 
-            if (!resp.ok) {
-                errorEl.textContent = 'Invalid credentials. Please try again.';
-                errorEl.style.display = 'block';
-                return;
-            }
+        <!-- Username -->
+        <div class="mb-4">
+          <label class="block font-mono text-xs uppercase tracking-wider text-white/50 mb-1">
+            Username
+          </label>
+          <input
+            x-model="username"
+            type="text"
+            name="username"
+            class="cyber-input"
+            autocomplete="username"
+            placeholder="inspector_id"
+            required
+            autofocus
+          >
+        </div>
 
-            const data = await resp.json();
-            localStorage.setItem('bdda_token', data.access_token);
+        <!-- Password -->
+        <div class="mb-5">
+          <label class="block font-mono text-xs uppercase tracking-wider text-white/50 mb-1">
+            Password
+          </label>
+          <input
+            x-model="password"
+            type="password"
+            name="password"
+            class="cyber-input"
+            autocomplete="current-password"
+            placeholder="••••••••"
+            required
+          >
+        </div>
 
-            // Check for token refresh header and update stored token if present
-            const newToken = resp.headers.get('X-New-Token');
-            if (newToken) {
-                localStorage.setItem('bdda_token', newToken);
-            }
+        <!-- Submit button -->
+        <button type="submit" class="action-btn w-full justify-center" :disabled="loading">
+          <span x-show="!loading">&#9658; LOGIN</span>
+          <span x-show="loading">AUTHENTICATING&hellip;</span>
+        </button>
 
-            // Redirect to ?next= param or default to /
+        <!-- Error message -->
+        <p
+          x-show="errorMsg"
+          x-text="errorMsg"
+          class="font-mono text-xs text-[#FF006E] mt-3"
+          style="display:none"
+        ></p>
+
+      </form>
+
+      <!-- Footer status -->
+      <div class="mt-6 pt-4 border-t border-white/5 flex items-center gap-2">
+        <span class="w-1.5 h-1.5 rounded-full bg-[#00FF88] inline-block" style="animation: pulse-dot 2s ease-in-out infinite"></span>
+        <span class="font-mono text-xs text-white/20 tracking-wide">AWID PIPELINE ONLINE</span>
+      </div>
+
+    </div>
+
+    <!-- Build tag -->
+    <div class="text-center mt-3 font-mono text-[10px] text-white/15 tracking-widest">
+      BDDA &middot; BLADE DEFECT DETECTION AGENT
+    </div>
+  </div>
+
+  <style>
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+  </style>
+
+  <!-- Alpine loginApp component -->
+  <script>
+    function loginApp() {
+      return {
+        username: '',
+        password: '',
+        loading: false,
+        errorMsg: '',
+
+        checkAlreadyLoggedIn() {
+          if (localStorage.getItem('bdda_token')) {
             const params = new URLSearchParams(window.location.search);
             window.location.href = params.get('next') || '/';
-        });
-    </script>
+          }
+        },
+
+        async login() {
+          this.loading = true;
+          this.errorMsg = '';
+          try {
+            const res = await fetch('/api/auth/token', {
+              method: 'POST',
+              body: new URLSearchParams({ username: this.username, password: this.password }),
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            });
+            if (!res.ok) {
+              this.errorMsg = 'Invalid credentials. Please try again.';
+              return;
+            }
+            const data = await res.json();
+            localStorage.setItem('bdda_token', data.access_token);
+            // Decode username from JWT payload (base64url → JSON → .sub)
+            try {
+              const payload = JSON.parse(atob(data.access_token.split('.')[1]));
+              localStorage.setItem('bdda_username', payload.sub);
+            } catch {}
+            const params = new URLSearchParams(window.location.search);
+            window.location.href = params.get('next') || '/';
+          } catch {
+            this.errorMsg = 'Network error. Please check connection.';
+          } finally {
+            this.loading = false;
+          }
+        },
+      }
+    }
+  </script>
+
 </body>
 </html>
