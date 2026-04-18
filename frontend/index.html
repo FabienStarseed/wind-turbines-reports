@@ -363,7 +363,100 @@
 
     <!-- HISTORY TAB -->
     <div x-show="activeTab==='history'">
-      <!-- Table — populated in Plan 05-04 -->
+
+      <!-- Header row -->
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="font-mono text-xs uppercase tracking-widest text-white/40">RECENT INSPECTIONS // LAST 30 DAYS</h2>
+        <button @click="loadHistory()" class="font-mono text-[10px] text-white/30 hover:text-white/60 uppercase tracking-wider transition-colors">
+          ↺ REFRESH
+        </button>
+      </div>
+
+      <!-- Loading state -->
+      <template x-if="!historyLoaded">
+        <div class="border border-white/[0.06] py-16 text-center">
+          <div class="font-mono text-[10px] text-white/20 uppercase tracking-widest pulse">LOADING…</div>
+        </div>
+      </template>
+
+      <!-- Empty state -->
+      <template x-if="jobs.length === 0 && historyLoaded">
+        <div class="border border-white/[0.06] py-16 text-center">
+          <div class="font-mono text-[10px] text-white/20 uppercase tracking-widest">NO REPORTS GENERATED YET</div>
+        </div>
+      </template>
+
+      <!-- Table -->
+      <template x-if="jobs.length > 0">
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse">
+            <thead>
+              <tr style="background: rgba(0,245,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.08);">
+                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-left py-2 px-3">DATE</th>
+                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-left py-2 px-3">TURBINE ID</th>
+                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-left py-2 px-3">SITE</th>
+                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-left py-2 px-3">STATUS</th>
+                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-right py-2 px-3">DEFECTS</th>
+                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-right py-2 px-3">COST</th>
+                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-right py-2 px-3">DOWNLOAD</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="job in jobs" :key="job.job_id">
+                <tr style="border-bottom: 1px solid var(--border);"
+                    class="transition-colors"
+                    @mouseenter="$el.style.background='rgba(255,255,255,0.03)'"
+                    @mouseleave="$el.style.background=''">
+
+                  <!-- DATE -->
+                  <td class="py-2.5 px-3 font-mono text-xs text-white/35 whitespace-nowrap"
+                      x-text="formatDate(job.created_at)"></td>
+
+                  <!-- TURBINE ID -->
+                  <td class="py-2.5 px-3 font-mono text-xs uppercase"
+                      style="color: #00F5FF;"
+                      x-text="job.turbine_id || '—'"></td>
+
+                  <!-- SITE -->
+                  <td class="py-2.5 px-3 text-sm text-white/70"
+                      x-text="job.site_name || '—'"></td>
+
+                  <!-- STATUS -->
+                  <td class="py-2.5 px-3">
+                    <span class="font-mono text-[10px] px-2 py-0.5 border"
+                          :class="{
+                            'text-[#00FF88] border-[#00FF88]/25 bg-[#00FF88]/[0.08]': job.stage === 'complete',
+                            'text-[#FF006E] border-[#FF006E]/25 bg-[#FF006E]/[0.08]': job.stage === 'error' || job.stage === 'failed',
+                            'text-[#FFB800] border-[#FFB800]/25 bg-[#FFB800]/[0.08] pulse': job.stage !== 'complete' && job.stage !== 'error' && job.stage !== 'failed',
+                          }"
+                          x-text="job.stage === 'complete' ? 'COMPLETE' : (job.stage === 'error' || job.stage === 'failed') ? 'FAILED' : 'RUNNING'">
+                    </span>
+                  </td>
+
+                  <!-- DEFECTS -->
+                  <td class="py-2.5 px-3 font-mono text-xs text-white/50 text-right"
+                      x-text="job.stage === 'complete' && job.defect_count != null ? job.defect_count : '–'"></td>
+
+                  <!-- COST -->
+                  <td class="py-2.5 px-3 font-mono text-xs text-white/50 text-right"
+                      x-text="job.stage === 'complete' && job.total_cost_usd ? '$' + parseFloat(job.total_cost_usd).toFixed(2) : '–'"></td>
+
+                  <!-- DOWNLOAD -->
+                  <td class="py-2.5 px-3 text-right">
+                    <template x-if="job.stage === 'complete'">
+                      <button class="action-btn sm" @click="downloadReport(job.job_id)">⬇ PDF</button>
+                    </template>
+                    <template x-if="job.stage !== 'complete'">
+                      <span class="font-mono text-[10px] text-white/20">–</span>
+                    </template>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
     </div>
 
   </main>
@@ -599,8 +692,17 @@
           URL.revokeObjectURL(url);
         },
 
-        // ── History (stub — implemented in Plan 05-04) ──
-        async loadHistory() {},
+        // ── History ──
+        async loadHistory() {
+          try {
+            const res = await this.apiFetch('/api/jobs');
+            if (!res || !res.ok) return;
+            this.jobs = await res.json();
+            this.historyLoaded = true;
+          } catch {
+            this.historyLoaded = true; // Don't leave it in loading state
+          }
+        },
       }
     }
   </script>
