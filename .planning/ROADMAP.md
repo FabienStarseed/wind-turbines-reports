@@ -10,7 +10,7 @@
 - [ ] **Phase 2: Persistence** - SQLite + Render Persistent Disk (survive restarts)
 - [x] **Phase 3: Auth** - JWT multi-inspector login (COMPLETE 2026-03-06)
 - [ ] **Phase 4: PDF Redesign** - Professional branded report with fpdf2
-- [ ] **Phase 5: Frontend UI** - Tailwind + Alpine.js polished interface
+- [x] **Phase 5: Frontend UI** - Tailwind + Alpine.js polished interface (COMPLETE 2026-04-18)
 
 ## Phase Details
 
@@ -97,4 +97,5 @@ Plans:
   4. Pipeline progress shows current stage name + animated progress bar
   5. Job history table shows all past inspections with download links
   6. Layout works on tablet screen (used in the field)
-**Plans**: TBD
+**Plans**: 4 plans (05-01 login, 05-02 shell, 05-03 form+progress, 05-04 history+CSS+JS) — COMPLETE 2026-04-18
+**Commits**: 315c85e, bed36d4, 7e0c424, 6637aae
