@@ -1,266 +1,214 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BDDA — Blade Defect Detection Agent</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWID — Inspection Dashboard</title>
+
+  <!-- Tailwind Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg:      '#050510',
+            cyan:    '#00F5FF',
+            green:   '#00FF88',
+            magenta: '#FF006E',
+            amber:   '#FFB800',
+            purple:  '#7B2FFF',
+          },
+          fontFamily: {
+            bebas: ['"Bebas Neue"', 'cursive'],
+            mono:  ['"JetBrains Mono"', '"DM Mono"', 'monospace'],
+            syne:  ['Syne', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Alpine.js v3 -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
 </head>
-<body>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- HEADER                                                                      -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<header class="app-header">
-  <div class="header-inner">
-    <div class="brand">
-      <div class="brand-icon">⚙</div>
-      <div class="brand-text">
-        <span class="brand-name">BDDA</span>
-        <span class="brand-sub">Blade Defect Detection Agent</span>
-      </div>
+<body x-data="app()" x-init="init()" x-cloak class="bg-[#050510] min-h-screen text-white">
+
+  <!-- Scanlines overlay -->
+  <div class="scanlines"></div>
+
+  <!-- ── HEADER ──────────────────────────────────────────────────────────── -->
+  <header class="fixed top-0 left-0 right-0 h-16 z-[100] flex items-center px-6 border-b border-white/[0.06]"
+          style="background: rgba(5,5,20,0.85); backdrop-filter: blur(12px);">
+
+    <!-- Left: Brand -->
+    <div class="flex items-baseline gap-3 min-w-[160px]">
+      <span class="font-bebas text-3xl leading-none bg-gradient-to-r from-[#00F5FF] to-[#7B2FFF] bg-clip-text text-transparent">AWID</span>
+      <span class="font-mono text-[9px] text-white/30 tracking-widest uppercase hidden sm:block">APAC WIND INSPECTIONS DRONES</span>
     </div>
-    <div class="header-meta">
-      <span class="api-status" id="apiStatus">Checking APIs…</span>
-    </div>
-  </div>
-</header>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- MAIN CONTENT                                                                -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<main class="app-main">
-
-  <!-- LEFT PANEL: Form -->
-  <div class="panel left-panel">
-    <div class="panel-title">New Inspection Report</div>
-
-    <form id="uploadForm" enctype="multipart/form-data">
-
-      <!-- ── Turbine Identity ── -->
-      <div class="form-section">
-        <div class="form-section-label">Turbine Identity</div>
-        <div class="form-grid">
-          <div class="field">
-            <label>Turbine ID <span class="req">*</span></label>
-            <input type="text" name="turbine_id" placeholder="JAP19" required>
-          </div>
-          <div class="field">
-            <label>Turbine Model <span class="req">*</span></label>
-            <input type="text" name="turbine_model" placeholder="Vestas V90-2.0 MW" required>
-          </div>
-          <div class="field">
-            <label>Site Name <span class="req">*</span></label>
-            <input type="text" name="site_name" placeholder="Tomamae Wind Farm" required>
-          </div>
-          <div class="field">
-            <label>Country <span class="req">*</span></label>
-            <select name="country" required>
-              <option value="">Select…</option>
-              <option value="Japan">Japan</option>
-              <option value="Philippines">Philippines</option>
-              <option value="Taiwan">Taiwan</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-grid form-grid-3">
-          <div class="field">
-            <label>Hub Height (m)</label>
-            <input type="number" name="hub_height_m" placeholder="80">
-          </div>
-          <div class="field">
-            <label>Rotor Diameter (m)</label>
-            <input type="number" name="rotor_diameter_m" placeholder="90">
-          </div>
-          <div class="field">
-            <label>Blade Length (m)</label>
-            <input type="number" name="blade_length_m" placeholder="44">
-          </div>
-        </div>
-        <div class="form-grid form-grid-2">
-          <div class="field">
-            <label>GPS Latitude</label>
-            <input type="text" name="gps_lat" placeholder="44.3123">
-          </div>
-          <div class="field">
-            <label>GPS Longitude</label>
-            <input type="text" name="gps_lon" placeholder="141.6789">
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Inspection Details ── -->
-      <div class="form-section">
-        <div class="form-section-label">Inspection Details</div>
-        <div class="form-grid">
-          <div class="field">
-            <label>Inspector Name <span class="req">*</span></label>
-            <input type="text" name="inspector_name" placeholder="Your name" required>
-          </div>
-          <div class="field">
-            <label>Inspection Date <span class="req">*</span></label>
-            <input type="date" name="inspection_date" required>
-          </div>
-          <div class="field">
-            <label>Drone Model</label>
-            <input type="text" name="drone_model" placeholder="DJI Matrice 300 RTK" value="DJI Matrice 300 RTK">
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Environmental Conditions ── -->
-      <div class="form-section">
-        <div class="form-section-label">Environmental Conditions</div>
-        <div class="form-grid form-grid-4">
-          <div class="field">
-            <label>Weather</label>
-            <input type="text" name="weather" placeholder="Clear, sunny">
-          </div>
-          <div class="field">
-            <label>Wind Speed (m/s)</label>
-            <input type="number" step="0.1" name="wind_speed_ms" placeholder="4.2">
-          </div>
-          <div class="field">
-            <label>Temperature (°C)</label>
-            <input type="number" name="temperature_c" placeholder="22">
-          </div>
-          <div class="field">
-            <label>Visibility (km)</label>
-            <input type="number" name="visibility_km" placeholder="20">
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Notes ── -->
-      <div class="form-section">
-        <div class="form-section-label">Inspection Notes</div>
-        <div class="field">
-          <textarea name="notes" rows="3" placeholder="Any limitations, blade access issues, weather notes…"></textarea>
-        </div>
-      </div>
-
-      <!-- ── Image Upload ── -->
-      <div class="form-section">
-        <div class="form-section-label">Upload Images <span class="req">*</span></div>
-        <div class="drop-zone" id="dropZone">
-          <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required>
-          <div class="drop-icon">📁</div>
-          <div class="drop-text">Drag &amp; drop your DJI mission folder ZIP</div>
-          <div class="drop-sub">or click to select files — ZIP preferred for full folder structure</div>
-          <div class="drop-hint">Supported: ZIP (DJI mission folder) · JPG/PNG (individual images)</div>
-        </div>
-        <div class="file-preview" id="filePreview" style="display:none;"></div>
-      </div>
-
-      <button type="submit" class="submit-btn" id="submitBtn">
-        <span class="btn-icon">▶</span>
-        Generate Inspection Report
+    <!-- Center: Tab Nav -->
+    <nav class="flex-1 flex justify-center gap-1">
+      <button @click="activeTab='new-inspection'"
+              class="font-mono text-xs uppercase tracking-widest px-4 py-5 border-b-2 transition-colors"
+              :class="activeTab==='new-inspection' ? 'border-[#FFB800] text-[#FFB800]' : 'border-transparent text-white/40 hover:text-white/70'">
+        NEW INSPECTION
       </button>
+      <button @click="activeTab='history'; if(!historyLoaded) loadHistory()"
+              class="font-mono text-xs uppercase tracking-widest px-4 py-5 border-b-2 transition-colors"
+              :class="activeTab==='history' ? 'border-[#FFB800] text-[#FFB800]' : 'border-transparent text-white/40 hover:text-white/70'">
+        HISTORY
+      </button>
+    </nav>
 
-    </form>
-  </div>
+    <!-- Right: User + Logout -->
+    <div class="flex items-center gap-3 min-w-[160px] justify-end">
+      <span class="font-mono text-xs text-[#00F5FF]" x-text="username"></span>
+      <button @click="logout()" class="action-btn sm amber">LOGOUT</button>
+    </div>
+  </header>
 
-  <!-- RIGHT PANEL: Status + History -->
-  <div class="panel right-panel">
+  <!-- ── MAIN CONTENT ──────────────────────────────────────────────────── -->
+  <main class="pt-16 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <!-- Active Job -->
-    <div class="panel-section" id="jobPanel" style="display:none;">
-      <div class="panel-title">Analysis Progress</div>
-      <div class="job-card" id="jobCard">
-        <div class="job-header">
-          <span class="job-turbine" id="jobTurbineId">—</span>
-          <span class="job-id" id="jobId">—</span>
-        </div>
-        <div class="progress-stages" id="progressStages">
-          <div class="stage-item" data-stage="ingesting">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Ingest Images</div>
-          </div>
-          <div class="stage-item" data-stage="triaging">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Triage (Kimi)</div>
-          </div>
-          <div class="stage-item" data-stage="classifying">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Classify (Gemini)</div>
-          </div>
-          <div class="stage-item" data-stage="analyzing">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Analyze (Claude)</div>
-          </div>
-          <div class="stage-item" data-stage="generating_report">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Build PDF</div>
-          </div>
-          <div class="stage-item" data-stage="complete">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Complete</div>
-          </div>
-        </div>
-        <div class="progress-bar-wrap">
-          <div class="progress-bar" id="progressBar" style="width:0%"></div>
-        </div>
-        <div class="job-message" id="jobMessage">Queued…</div>
-        <div class="job-stats" id="jobStats"></div>
-
-        <a class="download-btn" id="downloadBtn" style="display:none;" href="#">
-          ⬇ Download Report PDF
-        </a>
-        <div class="error-block" id="errorBlock" style="display:none;"></div>
-      </div>
+    <!-- NEW INSPECTION TAB -->
+    <div x-show="activeTab==='new-inspection'">
+      <!-- Form content — populated in Plan 05-03 -->
+      <!-- Progress tracker — populated in Plan 05-03 -->
     </div>
 
-    <!-- Pipeline info -->
-    <div class="panel-section">
-      <div class="panel-title">AI Pipeline</div>
-      <div class="pipeline-info">
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-1">1</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Triage</div>
-            <div class="pipeline-step-model">Kimi K2.5</div>
-            <div class="pipeline-step-desc">Binary YES/NO defect screening — all images (~$0.50/turbine)</div>
-          </div>
-        </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-2">2</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Classification</div>
-            <div class="pipeline-step-model">Gemini 2.5 Pro</div>
-            <div class="pipeline-step-desc">Defect type + Vestas Cat 1–5 severity — flagged images (~$3/turbine)</div>
-          </div>
-        </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-3">3</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Deep Analysis</div>
-            <div class="pipeline-step-model">Claude Opus 4.6</div>
-            <div class="pipeline-step-desc">Root cause + Vestas SMP — Cat 4–5 only (~$8/turbine)</div>
-          </div>
-        </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-4">4</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">PDF Report</div>
-            <div class="pipeline-step-model">WeasyPrint</div>
-            <div class="pipeline-step-desc">Professional Vestas-format PDF with findings + action matrix</div>
-          </div>
-        </div>
-      </div>
+    <!-- HISTORY TAB -->
+    <div x-show="activeTab==='history'">
+      <!-- Table — populated in Plan 05-04 -->
     </div>
 
-    <!-- Recent jobs -->
-    <div class="panel-section">
-      <div class="panel-title">Recent Reports</div>
-      <div id="jobHistory" class="job-history">
-        <div class="history-empty">No reports generated yet.</div>
-      </div>
-    </div>
+  </main>
 
-  </div>
-</main>
+  <!-- ── ALPINE APP() ─────────────────────────────────────────────────── -->
+  <script>
+    function app() {
+      return {
+        // ── Auth ──
+        token: localStorage.getItem('bdda_token') || null,
+        username: localStorage.getItem('bdda_username') || '',
 
-<script src="app.js"></script>
+        // ── Tab navigation ──
+        activeTab: 'new-inspection',
+
+        // ── Form sections collapse state ──
+        sections: {
+          identity:    true,
+          details:     true,
+          environment: true,
+          notes:       true,
+          upload:      true,
+        },
+
+        // ── File upload state ──
+        fileSelected: false,
+        fileName: '',
+        fileSize: '',
+
+        // ── Pipeline / job state ──
+        jobId: null,
+        stage: null,
+        progress: 0,
+        message: '',
+        totalImages: null,
+        flaggedImages: null,
+        criticalFindings: null,
+        isPolling: false,
+        downloadAvailable: false,
+        autoRedirect: false,
+        countdown: 3,
+        pipelineError: null,
+        submitting: false,
+        _pollTimer: null,
+
+        // ── Stage definitions ──
+        stages: [
+          { key: 'ingesting',         label: 'INGEST IMAGES' },
+          { key: 'triaging',          label: 'TRIAGE \u2014 claude-opus-4-6' },
+          { key: 'classifying',       label: 'CLASSIFY \u2014 claude-opus-4-6' },
+          { key: 'analyzing',         label: 'ANALYZE \u2014 claude-opus-4-6' },
+          { key: 'generating_report', label: 'BUILD PDF' },
+          { key: 'complete',          label: 'COMPLETE' },
+        ],
+        STAGE_ORDER: ['ingesting','triaging','classifying','analyzing','generating_report','complete'],
+
+        // ── History ──
+        jobs: [],
+        historyLoaded: false,
+
+        // ── Init ──
+        async init() {
+          if (!this.token) { window.location.href = '/login'; return; }
+          if (!this.username) {
+            try {
+              const p = JSON.parse(atob(this.token.split('.')[1]));
+              this.username = p.sub || '';
+              localStorage.setItem('bdda_username', this.username);
+            } catch {}
+          }
+        },
+
+        // ── Auth ──
+        logout() {
+          localStorage.removeItem('bdda_token');
+          localStorage.removeItem('bdda_username');
+          window.location.href = '/login';
+        },
+
+        // ── API wrapper (Bearer injection + X-New-Token silent refresh + 401 redirect) ──
+        async apiFetch(path, opts = {}) {
+          const token = localStorage.getItem('bdda_token');
+          if (!token) { this.logout(); return null; }
+          const headers = { 'Authorization': `Bearer ${token}`, ...(opts.headers || {}) };
+          const res = await fetch(path, { ...opts, headers });
+          const newToken = res.headers.get('X-New-Token');
+          if (newToken) { localStorage.setItem('bdda_token', newToken); this.token = newToken; }
+          if (res.status === 401) { this.logout(); return null; }
+          return res;
+        },
+
+        // ── Stage helpers ──
+        stageIndex() { return this.STAGE_ORDER.indexOf(this.stage); },
+        isDone(i)    { return this.stageIndex() > i && this.stage !== 'error'; },
+        isActive(i)  { return this.stageIndex() === i && this.stage !== 'error'; },
+        isFailed(i)  { return this.stage === 'error' && this.stageIndex() === i; },
+        isPending(i) { return this.stageIndex() < i; },
+
+        // ── Date formatter ──
+        formatDate(iso) {
+          if (!iso) return '\u2014';
+          const d = new Date(iso);
+          const mon = d.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase();
+          const day = String(d.getDate()).padStart(2, '0');
+          const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          return `${mon} ${day} \u00b7 ${time}`;
+        },
+
+        // ── Method stubs (implemented in Plans 05-03 and 05-04) ──
+        handleFileChange(e) {},
+        handleDrop(e) {},
+        async submit() {},
+        startPolling(jobId) {},
+        stopPolling() {},
+        async pollOnce(jobId) {},
+        async downloadReport(jobId) {},
+        async loadHistory() {},
+      }
+    }
+  </script>
+
 </body>
 </html>
