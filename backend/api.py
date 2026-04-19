@@ -618,6 +618,16 @@ async def health():
 
 # ─── STATIC FILES ────────────────────────────────────────────────────────────
 
+@app.get("/login", include_in_schema=False)
+async def login_page():
+    return FileResponse(str(FRONTEND_DIR / "login.html"))
+
+
+@app.get("/", include_in_schema=False)
+async def index_page():
+    return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
