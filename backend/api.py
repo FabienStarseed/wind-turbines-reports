@@ -438,6 +438,69 @@ async def get_status(job_id: str):
     }
 
 
+@app.get("/api/blademap/{job_id}")
+async def get_blademap(job_id: str, token: str = None):
+    """Return per-blade zone grid data for the Cyber Operator blade defect map UI."""
+    state = get_job(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    classify_path = JOBS_DIR / job_id / "classify.json"
+    if not classify_path.exists():
+        return {"blades": {}, "ready": False}
+
+    with open(classify_path) as f:
+        classify_data = json.load(f)
+
+    ZONES     = ["LE", "TE", "PS", "SS"]
+    POSITIONS = ["Root", "Mid", "Tip"]
+
+    blades: dict = {}
+    for img in classify_data:
+        blade = str(img.get("blade", "1"))
+        if blade not in blades:
+            blades[blade] = {
+                "blade": blade,
+                "total_defects": 0,
+                "max_category": 0,
+                "grid": {}
+            }
+        b = blades[blade]
+        b["total_defects"] += len(img.get("defects", []))
+        b["max_category"] = max(b["max_category"], img.get("max_category", 0))
+
+        for defect in img.get("defects", []):
+            zone = defect.get("zone", "LE")
+            pos  = defect.get("position", "Root")
+            # Normalize position: Transition → Mid
+            if pos == "Transition":
+                pos = "Mid"
+            key  = f"{zone}/{pos}"
+            if key not in b["grid"]:
+                b["grid"][key] = {"zone": zone, "position": pos, "count": 0, "worst_cat": 0, "defect_types": []}
+            cell = b["grid"][key]
+            cell["count"] += 1
+            cell["worst_cat"] = max(cell["worst_cat"], defect.get("iec_category", 0))
+            dn = defect.get("defect_name", "")
+            if dn and dn not in cell["defect_types"]:
+                cell["defect_types"].append(dn)
+
+    # Fill in empty cells so frontend always gets a complete 4×3 grid
+    for blade, b in blades.items():
+        for z in ZONES:
+            for p in POSITIONS:
+                key = f"{z}/{p}"
+                if key not in b["grid"]:
+                    b["grid"][key] = {"zone": z, "position": p, "count": 0, "worst_cat": 0, "defect_types": []}
+
+    return {
+        "ready": True,
+        "blades": blades,
+        "turbine_id": state.get("turbine_id", ""),
+        "site_name": state.get("site_name", ""),
+    }
+
+
 @app.get("/api/debug/ai")
 async def debug_ai():
     """Test Anthropic claude-opus-4-6 vision API — sends a test image, returns raw response."""

@@ -226,9 +226,104 @@ select.cyber-input option {
 ::-webkit-scrollbar-thumb { background: rgba(255,184,0,0.3); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,184,0,0.55); }
 
+/* ── Blade Defect Map ──────────────────────────────────────────────────────── */
+
+/* Severity tint layer */
+.bm-cell { --sev: transparent; }
+.bm-cell[data-cat="0"] { --sev: var(--green); }
+.bm-cell[data-cat="1"] { --sev: var(--amber); }
+.bm-cell[data-cat="2"] { --sev: var(--amber); }
+.bm-cell[data-cat="3"] { --sev: var(--magenta); }
+.bm-cell[data-cat="4"] { --sev: #FF3333; }
+
+.bm-cell {
+  position: relative;
+  border: 1px solid rgba(255,255,255,0.10);
+  padding: 8px;
+  background: rgba(10,10,24,0.85);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  transition: transform 100ms ease;
+  aspect-ratio: 1.2;
+  min-height: 72px;
+}
+
+/* Severity background tint */
+.bm-cell::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: var(--sev);
+  opacity: 0.15;
+  pointer-events: none;
+}
+.bm-cell[data-cat="4"]::before { opacity: 0.26; }
+
+/* Cross-hatch texture */
+.bm-cell::after {
+  content: "";
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 12px 12px;
+  pointer-events: none;
+}
+
+/* Glow border on critical cells */
+.bm-cell[data-cat="3"] {
+  border-color: rgba(255,0,110,0.40);
+  box-shadow: 0 0 20px -6px var(--magenta);
+}
+.bm-cell[data-cat="4"] {
+  border-color: rgba(255,51,51,0.50);
+  animation: bmAlertPulse 2.4s ease-in-out infinite;
+}
+@keyframes bmAlertPulse {
+  0%, 100% { box-shadow: 0 0 16px -6px #FF3333; }
+  50%       { box-shadow: 0 0 36px -3px #FF3333; }
+}
+
+/* Corner tick marks */
+.bm-corners span {
+  position: absolute;
+  width: 5px; height: 5px;
+  border: 1px solid rgba(255,255,255,0.22);
+  z-index: 1;
+}
+.bm-corners .tl { top: 3px; left: 3px; border-right: none; border-bottom: none; }
+.bm-corners .tr { top: 3px; right: 3px; border-left: none; border-bottom: none; }
+.bm-corners .bl { bottom: 3px; left: 3px; border-right: none; border-top: none; }
+.bm-corners .br { bottom: 3px; right: 3px; border-left: none; border-top: none; }
+
+/* Defect count marker */
+.bm-marker {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px; font-weight: 700;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+.bm-marker.empty {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.25);
+  font-weight: 400;
+}
+.bm-marker.cat0  { background: #f4f6ff; color: #050510; box-shadow: 0 0 20px -4px var(--green); }
+.bm-marker.cat12 { background: #f4f6ff; color: #050510; box-shadow: 0 0 20px -4px var(--amber); }
+.bm-marker.cat3  { background: var(--magenta); color: #fff; box-shadow: 0 0 20px -4px var(--magenta); }
+.bm-marker.cat4  { background: #FF3333; color: #fff; box-shadow: 0 0 20px -4px #FF3333; }
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   header .font-bebas { font-size: 1.5rem; }
   main { padding-left: 1rem; padding-right: 1rem; }
   .action-btn { padding: 0.4rem 0.9rem; }
+  .bm-cell { min-height: 56px; padding: 6px; }
+  .bm-marker { width: 28px; height: 28px; font-size: 11px; }
 }

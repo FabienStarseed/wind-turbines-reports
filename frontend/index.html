@@ -359,6 +359,128 @@
 
         </div>
       </div>
+
+      <!-- ── BLADE DEFECT MAP (appears below form+progress after complete) ── -->
+      <template x-if="stage === 'complete' && bladeMapReady">
+        <div class="mt-8">
+
+          <!-- Section label -->
+          <div class="flex items-center gap-3 mb-5">
+            <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+            <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">BLADE DEFECT MAP</span>
+            <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+          </div>
+
+          <!-- Blade selector tabs (if multiple blades) -->
+          <template x-if="bladeMapBlades.length > 1">
+            <div class="flex gap-1 mb-4">
+              <template x-for="b in bladeMapBlades" :key="b">
+                <button class="font-mono text-[10px] uppercase tracking-widest px-3 py-1.5 border transition-colors"
+                        :class="selectedBlade === b
+                          ? 'border-[#00F5FF] text-[#00F5FF] bg-[#00F5FF]/[0.08]'
+                          : 'border-white/10 text-white/35 hover:text-white/60'"
+                        @click="selectedBlade = b"
+                        x-text="'BLADE ' + b"></button>
+              </template>
+            </div>
+          </template>
+
+          <!-- Grid for selected blade -->
+          <template x-if="bladeMapData[selectedBlade]">
+            <div>
+
+              <!-- Blade header row -->
+              <div class="flex items-baseline justify-between mb-3">
+                <div>
+                  <span class="font-bebas text-2xl bg-gradient-to-r from-[#00F5FF] to-[#7B2FFF] bg-clip-text text-transparent"
+                        x-text="'BLADE ' + selectedBlade + ' — ' + bladeMapTurbineId"></span>
+                  <span class="font-mono text-[10px] text-white/35 ml-3 uppercase tracking-wider"
+                        x-text="'12 sectors · ' + (bladeMapData[selectedBlade].total_defects || 0) + ' defects'"></span>
+                </div>
+                <div x-show="bladeMapData[selectedBlade].max_category >= 3">
+                  <span class="font-mono text-[10px] text-[#FF006E] border border-[#FF006E]/30 bg-[#FF006E]/8 px-2 py-1 uppercase tracking-wider"
+                        x-text="'⚠ MAX CAT ' + bladeMapData[selectedBlade].max_category"></span>
+                </div>
+              </div>
+
+              <!-- Chordwise column headers -->
+              <div class="grid gap-1 mb-1" style="grid-template-columns: 70px repeat(4, 1fr);">
+                <div></div>
+                <template x-for="col in bmColumns" :key="col.code">
+                  <div class="text-center">
+                    <div class="font-mono text-[8px] text-white/25 uppercase tracking-wider" x-text="col.code"></div>
+                    <div class="font-mono text-[9px] text-white/50 uppercase tracking-wide" x-text="col.label"></div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- Grid rows -->
+              <template x-for="row in bmRows" :key="row.key">
+                <div class="grid gap-1 mb-1" style="grid-template-columns: 70px repeat(4, 1fr);">
+
+                  <!-- Spanwise row label -->
+                  <div class="flex flex-col justify-center border-r border-white/[0.06] pr-2">
+                    <div class="font-mono text-[8px] text-white/25 uppercase" x-text="row.code"></div>
+                    <div class="font-mono text-[10px] text-white/60 uppercase tracking-wide" x-text="row.label"></div>
+                    <div class="font-mono text-[8px] text-white/20 mt-0.5" x-text="row.range"></div>
+                  </div>
+
+                  <!-- 4 zone cells per row -->
+                  <template x-for="col in bmColumns" :key="col.zone">
+                    <div x-data="{ cell: bmGetCell(col.zone, row.pos) }"
+                         class="bm-cell"
+                         :data-cat="cell.worst_cat">
+                      <div class="bm-corners">
+                        <span class="tl"></span><span class="tr"></span>
+                        <span class="bl"></span><span class="br"></span>
+                      </div>
+
+                      <!-- Zone code + cat pill -->
+                      <div class="flex items-center justify-between z-10 relative">
+                        <span class="font-mono text-[8px] text-white/60 uppercase"
+                              x-text="col.zone + '/' + row.pos.slice(0,3).toUpperCase()"></span>
+                        <span class="font-mono text-[7px] px-1 font-semibold uppercase"
+                              :style="bmCatPillStyle(cell.worst_cat)"
+                              x-text="'C' + cell.worst_cat"
+                              x-show="cell.count > 0"></span>
+                      </div>
+
+                      <!-- Defect count marker -->
+                      <div class="flex items-center justify-center flex-1 py-1">
+                        <div class="bm-marker"
+                             :class="cell.count === 0 ? 'empty' : (cell.worst_cat >= 4 ? 'cat4' : cell.worst_cat === 3 ? 'cat3' : cell.worst_cat >= 1 ? 'cat12' : 'cat0')"
+                             x-text="cell.count"></div>
+                      </div>
+
+                      <!-- Footer: primary defect type -->
+                      <div class="font-mono text-[7px] text-white/30 uppercase truncate z-10 relative"
+                           x-text="cell.defect_types[0] || 'NOMINAL'"></div>
+                    </div>
+                  </template>
+
+                </div>
+              </template>
+
+              <!-- Legend -->
+              <div class="flex items-center gap-3 mt-4 border border-white/[0.06] px-4 py-3 bg-white/[0.015]">
+                <span class="font-mono text-[9px] text-[#00F5FF]/60 uppercase tracking-widest mr-2">SEVERITY</span>
+                <template x-for="leg in bmLegend" :key="leg.cat">
+                  <div class="flex items-center gap-1.5">
+                    <div class="w-3 h-3 rounded-[1px] flex-shrink-0"
+                         :style="'background:' + leg.color + '; box-shadow: 0 0 8px -2px ' + leg.color"></div>
+                    <span class="font-mono text-[8px] uppercase tracking-wide"
+                          :style="'color:' + leg.color"
+                          x-text="leg.label"></span>
+                  </div>
+                </template>
+              </div>
+
+            </div>
+          </template>
+
+        </div>
+      </template>
+
     </div>
 
     <!-- HISTORY TAB -->
@@ -517,6 +639,31 @@
         jobs: [],
         historyLoaded: false,
 
+        // ── Blade map ──
+        bladeMapReady: false,
+        bladeMapData: {},
+        bladeMapBlades: [],
+        bladeMapTurbineId: '',
+        selectedBlade: '1',
+
+        bmColumns: [
+          { zone: 'LE', code: 'C01', label: 'LEADING EDGE' },
+          { zone: 'PS', code: 'C02', label: 'PRESSURE SIDE' },
+          { zone: 'SS', code: 'C03', label: 'SUCTION SIDE' },
+          { zone: 'TE', code: 'C04', label: 'TRAILING EDGE' },
+        ],
+        bmRows: [
+          { pos: 'Root', key: 'root', code: 'R01', label: 'ROOT',     range: '0 – 30%' },
+          { pos: 'Mid',  key: 'mid',  code: 'R02', label: 'MID-SPAN', range: '30 – 70%' },
+          { pos: 'Tip',  key: 'tip',  code: 'R03', label: 'TIP',      range: '70 – 100%' },
+        ],
+        bmLegend: [
+          { cat: 0, color: '#00FF88', label: 'CAT 0 · NOMINAL' },
+          { cat: 1, color: '#FFB800', label: 'CAT 1–2 · MINOR' },
+          { cat: 3, color: '#FF006E', label: 'CAT 3 · MAJOR' },
+          { cat: 4, color: '#FF3333', label: 'CAT 4 · CRITICAL' },
+        ],
+
         // ── Init ──
         async init() {
           if (!this.token) { window.location.href = '/login'; return; }
@@ -658,6 +805,7 @@
               this.downloadAvailable = true;
               this.progress = 100;
               this.loadHistory();
+              this.loadBladeMap(jobId);
               if (this.autoRedirect) {
                 this.countdown = 3;
                 const tick = setInterval(() => {
@@ -700,8 +848,35 @@
             this.jobs = await res.json();
             this.historyLoaded = true;
           } catch {
-            this.historyLoaded = true; // Don't leave it in loading state
+            this.historyLoaded = true;
           }
+        },
+
+        // ── Blade map ──
+        async loadBladeMap(jobId) {
+          try {
+            const res = await this.apiFetch(`/api/blademap/${jobId}`);
+            if (!res || !res.ok) return;
+            const data = await res.json();
+            if (!data.ready) return;
+            this.bladeMapData    = data.blades || {};
+            this.bladeMapBlades  = Object.keys(data.blades || {}).sort();
+            this.bladeMapTurbineId = data.turbine_id || '';
+            this.selectedBlade   = this.bladeMapBlades[0] || '1';
+            this.bladeMapReady   = true;
+          } catch {}
+        },
+
+        bmGetCell(zone, pos) {
+          const blade = this.bladeMapData[this.selectedBlade];
+          if (!blade) return { count: 0, worst_cat: 0, defect_types: [] };
+          return blade.grid[`${zone}/${pos}`] || { count: 0, worst_cat: 0, defect_types: [] };
+        },
+
+        bmCatPillStyle(cat) {
+          const colors = { 0: '#00FF88', 1: '#FFB800', 2: '#FFB800', 3: '#FF006E', 4: '#FF3333' };
+          const c = colors[cat] || '#fff';
+          return `background: ${c}; color: #050510; border-radius: 1px;`;
         },
       }
     }
