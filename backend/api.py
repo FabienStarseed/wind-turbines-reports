@@ -18,12 +18,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, BackgroundTasks
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, BackgroundTasks, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import OAuth2PasswordRequestForm
+
+from backend.auth import create_token, get_current_user, hash_password, verify_password
+from backend.database import get_user_by_username, create_user as db_create_user, init_db
 
 # ─── APP SETUP ────────────────────────────────────────────────────────────────
+
+# Init DB + seed admin on startup
+init_db()
 
 app = FastAPI(
     title="BDDA — Blade Defect Detection Agent",
@@ -306,6 +313,38 @@ def extract_upload(upload_file: UploadFile, dest_dir: Path) -> int:
         with open(dest_dir / filename, "wb") as f:
             f.write(content)
         return 1
+
+
+# ─── AUTH ENDPOINTS ───────────────────────────────────────────────────────────
+
+@app.post("/api/auth/token")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Issue JWT token. Accepts OAuth2 form (username + password)."""
+    user = get_user_by_username(form_data.username)
+    if not user or not verify_password(form_data.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_token(user["username"], str(user["id"]), user["is_admin"])
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/api/admin/create-user")
+async def admin_create_user(
+    payload: dict,
+    request: Request,
+):
+    """Create inspector account. Requires X-Admin-Secret header."""
+    admin_secret = os.environ.get("ADMIN_SECRET", "")
+    if not admin_secret or request.headers.get("X-Admin-Secret") != admin_secret:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    username = payload.get("username", "").strip()
+    password = payload.get("password", "")
+    is_admin = payload.get("is_admin", False)
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="username and password required")
+    if get_user_by_username(username):
+        raise HTTPException(status_code=409, detail="User already exists")
+    user = db_create_user(username, hash_password(password), is_admin=is_admin)
+    return {"created": user["username"], "is_admin": user["is_admin"]}
 
 
 # ─── ENDPOINTS ────────────────────────────────────────────────────────────────
