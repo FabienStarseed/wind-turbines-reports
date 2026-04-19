@@ -790,6 +790,74 @@ select.cyber-input option {
 .pipeline-readout-cell .rc-val.green { color: var(--green); }
 .pipeline-readout-cell .rc-val.amber { color: var(--amber); }
 
+/* ── NEW INSPECTION panel ─────────────────────────────────────────────────── */
+.insp-panel {
+  position: relative;
+  border: 1px solid var(--border);
+  padding: 28px 24px 24px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.015), transparent);
+}
+.insp-panel-corners span {
+  position: absolute; width: 8px; height: 8px;
+  border: 1px solid rgba(0,245,255,0.5);
+}
+.insp-panel-corners .tl { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.insp-panel-corners .tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+.insp-panel-corners .bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+.insp-panel-corners .br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+.insp-panel-tag {
+  position: absolute; top: -1px; left: 18px;
+  transform: translateY(-50%);
+  background: var(--bg);
+  padding: 0 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px; letter-spacing: 0.28em; text-transform: uppercase;
+  color: var(--cyan);
+}
+
+/* Eyebrow line (matches design system) */
+.eyebrow-line {
+  display: flex; gap: 10px; align-items: center;
+}
+.eyebrow-line::before {
+  content: ""; width: 28px; height: 1px;
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+  flex-shrink: 0;
+}
+.eyebrow-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; letter-spacing: 0.32em; color: var(--cyan);
+  text-transform: uppercase;
+}
+
+/* Empty state */
+.insp-empty-state {
+  border: 1px solid var(--border);
+  padding: 32px 24px;
+  text-align: center;
+  background: rgba(255,255,255,0.01);
+}
+
+/* Drop zone cyber style */
+.drop-zone-inner {
+  pointer-events: none;
+  padding: 36px 20px;
+  text-align: center;
+}
+.drop-zone-svg { margin: 0 auto 16px; opacity: 0.25; }
+.drop-zone-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase;
+  color: rgba(255,255,255,0.45); margin-bottom: 6px;
+}
+.drop-zone-hint {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(255,255,255,0.18);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   header .font-bebas { font-size: 1.5rem; }

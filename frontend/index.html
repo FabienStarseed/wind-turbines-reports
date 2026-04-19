@@ -82,10 +82,23 @@
 
     <!-- NEW INSPECTION TAB -->
     <div x-show="activeTab==='new-inspection'">
+      <div class="eyebrow-line mb-6">
+        <span class="eyebrow-label">Blade Defect Detection Agent · AI Pipeline</span>
+      </div>
+      <div class="flex items-baseline gap-4 mb-6">
+        <span class="font-bebas text-5xl bg-gradient-to-r from-[#00F5FF] to-[#7B2FFF] bg-clip-text text-transparent leading-none">NEW INSPECTION</span>
+        <span class="font-mono text-[10px] text-white/25 uppercase tracking-widest">// AWID OPS</span>
+      </div>
       <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
 
         <!-- ── FORM COLUMN (3/5) ────────────────────────────────────────── -->
         <div class="lg:col-span-3">
+          <div class="insp-panel">
+            <div class="insp-panel-corners">
+              <span class="tl"></span><span class="tr"></span>
+              <span class="bl"></span><span class="br"></span>
+            </div>
+            <div class="insp-panel-tag">// NEW INSPECTION</div>
           <form @submit.prevent="submit()" enctype="multipart/form-data">
 
             <!-- SECTION 1: TURBINE IDENTITY -->
@@ -235,10 +248,15 @@
                        class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                        @change="handleFileChange($event)">
                 <template x-if="!fileSelected">
-                  <div class="text-center py-10 pointer-events-none">
-                    <div class="text-3xl mb-3">📁</div>
-                    <div class="font-mono text-xs text-white/40 uppercase tracking-wider">DROP ZIP OR CLICK TO SELECT</div>
-                    <div class="font-mono text-[10px] text-white/20 mt-1">ZIP (DJI folder) · JPG · PNG</div>
+                  <div class="drop-zone-inner">
+                    <svg class="drop-zone-svg" width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <rect x="6" y="14" width="28" height="20" rx="1" stroke="rgba(255,255,255,0.5)" stroke-width="1.2" fill="none"/>
+                      <path d="M6 18h28" stroke="rgba(255,255,255,0.2)" stroke-width="0.8"/>
+                      <path d="M14 14v-2a2 2 0 012-2h8a2 2 0 012 2v2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2" fill="none"/>
+                      <path d="M20 22v8M16 26l4-4 4 4" stroke="rgba(0,245,255,0.7)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <div class="drop-zone-title">DROP ZIP OR FOLDER</div>
+                    <div class="drop-zone-hint">DJI P1 · JPEG · ZIP · MAX 500MB</div>
                   </div>
                 </template>
                 <template x-if="fileSelected">
@@ -261,6 +279,7 @@
             </button>
 
           </form>
+          </div><!-- /insp-panel -->
         </div>
 
         <!-- ── PROGRESS COLUMN (2/5) ─────────────────────────────────────── -->
@@ -268,9 +287,15 @@
 
           <!-- Empty state -->
           <template x-if="!jobId">
-            <div class="border border-white/[0.06] p-6 text-center mt-2">
-              <div class="font-mono text-xs text-white/20 uppercase tracking-widest">NO INSPECTIONS YET</div>
-              <div class="font-mono text-[32px] text-white/10 mt-2">–</div>
+            <div class="insp-empty-state mt-2">
+              <div class="font-mono text-[9px] text-white/15 uppercase tracking-[0.3em] mb-3">// PIPELINE IDLE</div>
+              <svg width="48" height="48" viewBox="0 0 28 28" fill="none" class="mx-auto mb-3 opacity-10">
+                <circle cx="14" cy="14" r="2" fill="#00F5FF"/>
+                <path d="M14 2 L14 12 M14 26 L14 16 M2 14 L12 14 M26 14 L16 14" stroke="#00F5FF" stroke-width="1" opacity="0.7"/>
+                <circle cx="14" cy="14" r="12" stroke="#7B2FFF" stroke-width="0.5" stroke-dasharray="2 3" opacity="0.6"/>
+              </svg>
+              <div class="font-mono text-[10px] text-white/20 uppercase tracking-widest">SUBMIT INSPECTION TO BEGIN</div>
+              <div class="font-mono text-[9px] text-white/10 mt-1">TRIAGE → CLASSIFY → ANALYZE → REPORT</div>
             </div>
           </template>
 
