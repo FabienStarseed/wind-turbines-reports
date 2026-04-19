@@ -279,65 +279,156 @@
             <div class="border border-white/[0.06] p-5">
 
               <!-- Job ID header -->
-              <div class="font-mono text-[10px] text-white/30 uppercase tracking-wider mb-4"
+              <div class="font-mono text-[10px] text-white/30 uppercase tracking-wider mb-5"
                    x-text="'JOB ' + jobId?.slice(0,8).toUpperCase()"></div>
 
-              <!-- Stage dots -->
-              <div class="space-y-2 mb-5">
-                <template x-for="(s, i) in stages" :key="s.key">
-                  <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 rounded-full flex-shrink-0 transition-colors"
-                         :class="{
-                           'bg-[#00FF88]': isDone(i),
-                           'bg-[#FFB800] pulse': isActive(i),
-                           'bg-[#FF006E]': isFailed(i),
-                           'bg-white/15': isPending(i),
-                         }"></div>
-                    <span class="font-mono text-xs uppercase tracking-wide transition-colors"
-                          :class="{
-                            'text-[#00FF88]': isDone(i),
-                            'text-[#FFB800]': isActive(i),
-                            'text-[#FF006E]': isFailed(i),
-                            'text-white/25': isPending(i),
-                          }">
-                      <span x-text="s.label"></span>
-                      <span x-show="isDone(i)" class="ml-1">✓</span>
-                      <span x-show="isFailed(i)" class="ml-1">✗</span>
+              <!-- ── PIPELINE NODES ─────────────────────────────────────────
+                Node 1 TRIAGE:   complete when stageIndex() > 1
+                Node 2 CLASSIFY: active stageIndex()===2||3, complete > 3
+                Node 3 ANALYZE:  active stageIndex()===4,    complete >= 5
+                Conn 1: complete when node1 complete
+                Conn 2: half when node2 active, complete when node2 complete
+              ──────────────────────────────────────────────────────────── -->
+              <div class="pipeline-track">
+
+                <!-- NODE 1 — TRIAGE -->
+                <div class="pipeline-node-wrap">
+                  <div class="pipeline-node"
+                       :data-state="stageIndex() > 1 ? 'complete' : stageIndex() === 1 ? 'active' : 'pending'">
+                    <div class="ring-outer"></div>
+                    <div class="ring-inner"></div>
+                    <div class="node-spinner"></div>
+                    <div class="node-core">
+                      <svg class="node-check" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 10l4.5 4.5L16 7" stroke="#050510" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      <div class="node-active-dot"></div>
+                      <span class="node-pending-num">1</span>
+                    </div>
+                  </div>
+                  <div class="pipeline-node-label"
+                       :class="stageIndex() > 1 ? 'state-complete' : stageIndex() === 1 ? 'state-active' : 'state-pending'">
+                    <span class="lbl-stage">STAGE 01</span>
+                    <span class="lbl-name">TRIAGE</span>
+                    <span class="lbl-status">
+                      <template x-if="stageIndex() > 1"><span>DONE</span></template>
+                      <template x-if="stageIndex() === 1"><span x-text="(message || 'running').slice(0,14)"></span></template>
+                      <template x-if="stageIndex() < 1"><span>QUEUED</span></template>
+                      <span class="cursor-blink" x-show="stageIndex() === 1"></span>
                     </span>
                   </div>
-                </template>
+                </div>
+
+                <!-- CONNECTOR 1 -->
+                <div class="pipeline-connector"
+                     :data-state="stageIndex() > 1 ? 'complete' : 'pending'">
+                  <div class="conn-fill"></div>
+                  <div class="conn-dot"></div>
+                </div>
+
+                <!-- NODE 2 — CLASSIFY -->
+                <div class="pipeline-node-wrap">
+                  <div class="pipeline-node"
+                       :data-state="stageIndex() > 3 ? 'complete' : (stageIndex() === 2 || stageIndex() === 3) ? 'active' : 'pending'">
+                    <div class="ring-outer"></div>
+                    <div class="ring-inner"></div>
+                    <div class="node-spinner"></div>
+                    <div class="node-core">
+                      <svg class="node-check" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 10l4.5 4.5L16 7" stroke="#050510" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      <div class="node-active-dot"></div>
+                      <span class="node-pending-num">2</span>
+                    </div>
+                  </div>
+                  <div class="pipeline-node-label"
+                       :class="stageIndex() > 3 ? 'state-complete' : (stageIndex() === 2 || stageIndex() === 3) ? 'state-active' : 'state-pending'">
+                    <span class="lbl-stage">STAGE 02</span>
+                    <span class="lbl-name">CLASSIFY</span>
+                    <span class="lbl-status">
+                      <template x-if="stageIndex() > 3"><span>DONE</span></template>
+                      <template x-if="stageIndex() === 2 || stageIndex() === 3"><span x-text="(message || 'running').slice(0,14)"></span></template>
+                      <template x-if="stageIndex() < 2"><span>QUEUED</span></template>
+                      <span class="cursor-blink" x-show="stageIndex() === 2 || stageIndex() === 3"></span>
+                    </span>
+                  </div>
+                </div>
+
+                <!-- CONNECTOR 2 -->
+                <div class="pipeline-connector"
+                     :data-state="stageIndex() > 3 ? 'complete' : (stageIndex() === 2 || stageIndex() === 3) ? 'half' : 'pending'">
+                  <div class="conn-fill"></div>
+                  <div class="conn-dot"></div>
+                </div>
+
+                <!-- NODE 3 — ANALYZE -->
+                <div class="pipeline-node-wrap">
+                  <div class="pipeline-node"
+                       :data-state="stageIndex() >= 5 ? 'complete' : stageIndex() === 4 ? 'active' : 'pending'">
+                    <div class="ring-outer"></div>
+                    <div class="ring-inner"></div>
+                    <div class="node-spinner"></div>
+                    <div class="node-core">
+                      <svg class="node-check" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 10l4.5 4.5L16 7" stroke="#050510" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      <div class="node-active-dot"></div>
+                      <span class="node-pending-num">3</span>
+                    </div>
+                  </div>
+                  <div class="pipeline-node-label"
+                       :class="stageIndex() >= 5 ? 'state-complete' : stageIndex() === 4 ? 'state-active' : 'state-pending'">
+                    <span class="lbl-stage">STAGE 03</span>
+                    <span class="lbl-name">ANALYZE</span>
+                    <span class="lbl-status">
+                      <template x-if="stageIndex() >= 5"><span>DONE</span></template>
+                      <template x-if="stageIndex() === 4"><span x-text="(message || 'running').slice(0,14)"></span></template>
+                      <template x-if="stageIndex() < 4"><span>QUEUED</span></template>
+                      <span class="cursor-blink" x-show="stageIndex() === 4"></span>
+                    </span>
+                  </div>
+                </div>
+
               </div>
+              <!-- /pipeline-track -->
 
               <!-- Progress bar -->
-              <div class="h-[4px] w-full bg-white/10 overflow-hidden mb-3">
-                <div class="h-full transition-all duration-700"
-                     :style="`width: ${progress}%; background: ${progress >= 100 ? 'var(--green)' : 'linear-gradient(90deg, var(--amber), var(--cyan))'}`">
+              <div class="pipeline-progress-row">
+                <span class="pipeline-progress-label"
+                      x-text="'STAGE ' + Math.max(1, Math.min(stageIndex() + 1, 6)) + ' OF 6'"></span>
+                <div class="pipeline-progress-track">
+                  <div class="pipeline-progress-fill" :style="'width:' + progress + '%'"></div>
                 </div>
+                <span class="pipeline-progress-pct" x-text="progress + '%'"></span>
               </div>
 
-              <!-- Status message -->
-              <div class="font-mono text-xs text-white/40 mb-4" x-text="message || stage || '—'"></div>
-
-              <!-- Stats row -->
-              <div x-show="totalImages || flaggedImages || criticalFindings" class="flex gap-4 mb-4">
-                <template x-if="totalImages">
-                  <span class="font-mono text-xs text-white/50"><span x-text="totalImages"></span> IMAGES</span>
-                </template>
-                <template x-if="flaggedImages">
-                  <span class="font-mono text-xs text-[#FFB800]"><span x-text="flaggedImages"></span> FLAGGED</span>
-                </template>
-                <template x-if="criticalFindings">
-                  <span class="font-mono text-xs text-[#FF006E]"><span x-text="criticalFindings"></span> CRITICAL</span>
-                </template>
+              <!-- Readout grid -->
+              <div class="pipeline-readout">
+                <div class="pipeline-readout-cell">
+                  <span class="rc-key">JOB</span>
+                  <span class="rc-val cyan" x-text="jobId ? jobId.slice(0,8).toUpperCase() : '—'"></span>
+                </div>
+                <div class="pipeline-readout-cell">
+                  <span class="rc-key">STAGE</span>
+                  <span class="rc-val" x-text="stage ? stage.replace(/_/g,' ').toUpperCase() : '—'"></span>
+                </div>
+                <div class="pipeline-readout-cell">
+                  <span class="rc-key">IMAGES</span>
+                  <span class="rc-val" :class="totalImages ? 'cyan' : ''" x-text="totalImages || '—'"></span>
+                </div>
+                <div class="pipeline-readout-cell">
+                  <span class="rc-key">FLAGGED</span>
+                  <span class="rc-val" :class="flaggedImages ? 'amber' : ''" x-text="flaggedImages || '—'"></span>
+                </div>
               </div>
 
               <!-- COMPLETE state -->
-              <div x-show="stage === 'complete'" class="space-y-3">
-                <div class="font-mono text-xs text-[#00FF88] tracking-widest uppercase pulse text-center py-2 border border-[#00FF88]/30 bg-[#00FF88]/8">
-                  ✓ INSPECTION COMPLETE
+              <div x-show="stage === 'complete'" class="space-y-3 mt-4">
+                <div class="font-mono text-xs text-[#00FF88] tracking-widest uppercase pulse text-center py-2 border border-[#00FF88]/30 bg-[#00FF88]/[0.06]">
+                  INSPECTION COMPLETE
                 </div>
                 <button class="action-btn w-full justify-center" @click="downloadReport(jobId)">
-                  ⬇ DOWNLOAD REPORT PDF
+                  DOWNLOAD REPORT PDF
                 </button>
                 <label class="flex items-center gap-2 font-mono text-[10px] text-white/35 cursor-pointer">
                   <input type="checkbox" x-model="autoRedirect" class="accent-[#00F5FF]">
@@ -349,8 +440,8 @@
               </div>
 
               <!-- ERROR state -->
-              <div x-show="stage === 'error'" class="mt-2">
-                <div class="font-mono text-xs text-[#FF006E] border border-[#FF006E]/30 bg-[#FF006E]/8 px-3 py-2"
+              <div x-show="stage === 'error'" class="mt-4">
+                <div class="font-mono text-xs text-[#FF006E] border border-[#FF006E]/30 bg-[#FF006E]/[0.06] px-3 py-2"
                      x-text="pipelineError || 'Pipeline error. Check server logs.'"></div>
               </div>
 
@@ -508,74 +599,133 @@
         </div>
       </template>
 
-      <!-- Table -->
+      <!-- Cards -->
       <template x-if="jobs.length > 0">
-        <div class="overflow-x-auto">
-          <table class="w-full border-collapse">
-            <thead>
-              <tr style="background: rgba(0,245,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.08);">
-                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-left py-2 px-3">DATE</th>
-                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-left py-2 px-3">TURBINE ID</th>
-                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-left py-2 px-3">SITE</th>
-                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-left py-2 px-3">STATUS</th>
-                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-right py-2 px-3">DEFECTS</th>
-                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-right py-2 px-3">COST</th>
-                <th class="font-mono text-[9px] text-white/25 uppercase tracking-widest text-right py-2 px-3">DOWNLOAD</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template x-for="job in jobs" :key="job.job_id">
-                <tr style="border-bottom: 1px solid var(--border);"
-                    class="transition-colors"
-                    @mouseenter="$el.style.background='rgba(255,255,255,0.03)'"
-                    @mouseleave="$el.style.background=''">
+        <div>
 
-                  <!-- DATE -->
-                  <td class="py-2.5 px-3 font-mono text-xs text-white/35 whitespace-nowrap"
-                      x-text="formatDate(job.created_at)"></td>
+          <!-- Column headers -->
+          <div class="hist-header-row">
+            <span></span>
+            <span>Job / Status</span>
+            <span>Site</span>
+            <span>BDDA / IEC</span>
+            <span>Defects</span>
+            <span>Actions</span>
+          </div>
 
-                  <!-- TURBINE ID -->
-                  <td class="py-2.5 px-3 font-mono text-xs uppercase"
-                      style="color: #00F5FF;"
-                      x-text="job.turbine_id || '—'"></td>
+          <!-- Card list -->
+          <div class="space-y-2">
+            <template x-for="job in jobs" :key="job.job_id">
+              <div class="hist-card"
+                   :data-status="job.stage === 'complete' ? 'complete' : (job.stage === 'error' || job.stage === 'failed') ? 'failed' : 'processing'">
 
-                  <!-- SITE -->
-                  <td class="py-2.5 px-3 text-sm text-white/70"
-                      x-text="job.site_name || '—'"></td>
+                <!-- Corner ticks -->
+                <div class="hist-card-corners">
+                  <span class="tl"></span><span class="tr"></span>
+                  <span class="bl"></span><span class="br"></span>
+                </div>
 
-                  <!-- STATUS -->
-                  <td class="py-2.5 px-3">
-                    <span class="font-mono text-[10px] px-2 py-0.5 border"
-                          :class="{
-                            'text-[#00FF88] border-[#00FF88]/25 bg-[#00FF88]/[0.08]': job.stage === 'complete',
-                            'text-[#FF006E] border-[#FF006E]/25 bg-[#FF006E]/[0.08]': job.stage === 'error' || job.stage === 'failed',
-                            'text-[#FFB800] border-[#FFB800]/25 bg-[#FFB800]/[0.08] pulse': job.stage !== 'complete' && job.stage !== 'error' && job.stage !== 'failed',
-                          }"
-                          x-text="job.stage === 'complete' ? 'COMPLETE' : (job.stage === 'error' || job.stage === 'failed') ? 'FAILED' : 'RUNNING'">
-                    </span>
-                  </td>
+                <!-- Col 1: bar placeholder -->
+                <div class="hc-bar"></div>
 
-                  <!-- DEFECTS -->
-                  <td class="py-2.5 px-3 font-mono text-xs text-white/50 text-right"
-                      x-text="job.stage === 'complete' && job.defect_count != null ? job.defect_count : '–'"></td>
+                <!-- Col 2: Job ID + date + status pill -->
+                <div class="hc-job">
+                  <div class="font-mono text-[13px] text-[#00F5FF] font-medium uppercase leading-none mb-1"
+                       x-text="(job.turbine_id || job.job_id.slice(0,8)).toUpperCase()"></div>
+                  <div class="font-mono text-[10px] text-white/35 mb-2"
+                       x-text="formatDate(job.created_at)"></div>
+                  <span class="hist-status-pill"
+                        x-text="job.stage === 'complete' ? 'COMPLETE' : (job.stage === 'error' || job.stage === 'failed') ? 'FAILED' : 'PROCESSING'"
+                        :class="job.stage !== 'complete' && job.stage !== 'error' && job.stage !== 'failed' ? 'pulse' : ''">
+                  </span>
+                </div>
 
-                  <!-- COST -->
-                  <td class="py-2.5 px-3 font-mono text-xs text-white/50 text-right"
-                      x-text="job.stage === 'complete' && job.total_cost_usd ? '$' + parseFloat(job.total_cost_usd).toFixed(2) : '–'"></td>
+                <!-- Col 3: Site + meta + GPS -->
+                <div class="hc-site">
+                  <div class="font-syne font-bold text-[16px] text-white leading-tight truncate mb-0.5"
+                       x-text="job.site_name || '—'"></div>
+                  <div class="font-mono text-[10px] text-white/40 mb-0.5">
+                    <span x-text="(job.total_images || '?') + ' images'"></span>
+                    <span class="mx-1 text-white/20">·</span>
+                    <span>3 blades</span>
+                    <span class="mx-1 text-white/20">·</span>
+                    <span x-text="job.rotor_diameter_m ? (parseFloat(job.rotor_diameter_m) * 0.5 * Math.PI).toFixed(1) + 'M span' : '—'"></span>
+                  </div>
+                  <div class="font-mono text-[10px] text-white/25"
+                       x-text="(job.gps_lat && job.gps_lon) ? job.gps_lat + ' · ' + job.gps_lon : ''"></div>
+                </div>
 
-                  <!-- DOWNLOAD -->
-                  <td class="py-2.5 px-3 text-right">
-                    <template x-if="job.stage === 'complete'">
-                      <button class="action-btn sm" @click="downloadReport(job.job_id)">⬇ PDF</button>
-                    </template>
-                    <template x-if="job.stage !== 'complete'">
-                      <span class="font-mono text-[10px] text-white/20">–</span>
-                    </template>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
+                <!-- Col 4: BDDA score + IEC CAT -->
+                <div class="hc-scores">
+                  <template x-if="job.bdda_score != null">
+                    <div>
+                      <div class="hist-score-box mb-1">
+                        <span class="hist-score-num"
+                              :class="job.bdda_score >= 7 ? 'score-high' : job.bdda_score >= 4 ? 'score-mid' : 'score-low'"
+                              x-text="job.bdda_score"></span>
+                        <span class="font-mono text-[10px] text-white/30">/10</span>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="job.bdda_score == null">
+                    <div class="font-mono text-[18px] text-white/20 mb-1">—</div>
+                  </template>
+                  <template x-if="job.max_iec_category != null">
+                    <div>
+                      <span class="hist-iec-pill"
+                            :class="'cat-' + job.max_iec_category"
+                            x-text="'IEC CAT ' + job.max_iec_category"></span>
+                    </div>
+                  </template>
+                  <template x-if="job.max_iec_category == null">
+                    <div>
+                      <span class="hist-iec-pill cat-na">IEC —</span>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- Col 5: Defect count + critical flag -->
+                <div class="hc-defects">
+                  <template x-if="job.stage === 'complete' && job.defect_count != null">
+                    <div>
+                      <div class="flex items-center gap-1.5 mb-1">
+                        <svg width="13" height="12" viewBox="0 0 13 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M6.5 1L12.1 11H0.9L6.5 1Z" stroke="rgba(255,255,255,0.4)" stroke-width="1" fill="none"/>
+                        </svg>
+                        <span class="font-mono text-sm text-white/70" x-text="job.defect_count"></span>
+                      </div>
+                      <template x-if="job.critical_findings && job.critical_findings > 0">
+                        <div class="font-mono text-[10px] text-[#FF006E] uppercase tracking-wide">
+                          &#9888; CRITICAL
+                        </div>
+                      </template>
+                      <template x-if="!job.critical_findings || job.critical_findings === 0">
+                        <div class="font-mono text-[10px] text-[#00FF88] uppercase tracking-wide">
+                          &#10003; NOMINAL
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="job.stage !== 'complete' || job.defect_count == null">
+                    <span class="font-mono text-[14px] text-white/20">—</span>
+                  </template>
+                </div>
+
+                <!-- Col 6: Actions -->
+                <div class="hc-actions flex flex-col items-start">
+                  <template x-if="job.stage === 'complete'">
+                    <button class="hist-btn-dl" @click="downloadReport(job.job_id)">DOWNLOAD PDF</button>
+                  </template>
+                  <template x-if="job.stage !== 'complete'">
+                    <span class="font-mono text-[10px] text-white/20 mb-1">—</span>
+                  </template>
+                  <button class="hist-btn-del" @click="deleteJob(job.job_id)">DEL</button>
+                </div>
+
+              </div>
+            </template>
+          </div>
+
         </div>
       </template>
 
@@ -850,6 +1000,17 @@
           } catch {
             this.historyLoaded = true;
           }
+        },
+
+        // ── Delete job ──
+        async deleteJob(jobId) {
+          if (!confirm('Delete this inspection record?')) return;
+          try {
+            const res = await this.apiFetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+            if (res && res.ok) {
+              this.jobs = this.jobs.filter(j => j.job_id !== jobId);
+            }
+          } catch {}
         },
 
         // ── Blade map ──

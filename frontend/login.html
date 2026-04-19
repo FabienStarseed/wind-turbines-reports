@@ -3,178 +3,464 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AWID — Inspector Login</title>
+  <title>AWID — Auth Terminal</title>
 
-  <!-- Tailwind Play CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: { extend: {
-        colors: {
-          bg: '#050510',
-          cyan: '#00F5FF',
-          green: '#00FF88',
-          magenta: '#FF006E',
-          amber: '#FFB800',
-          purple: '#7B2FFF'
-        },
-        fontFamily: {
-          bebas: ['Bebas Neue', 'sans-serif'],
-          mono: ['JetBrains Mono', 'monospace'],
-          syne: ['Syne', 'sans-serif'],
-          dmmono: ['DM Mono', 'monospace']
-        }
-      }}
-    }
-  </script>
-
-  <!-- Google Fonts -->
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-  <!-- App styles -->
-  <link rel="stylesheet" href="style.css">
-
   <style>
+    /* ── Design tokens ── */
+    :root {
+      --cyan:    #00F5FF;
+      --purple:  #7B2FFF;
+      --bg:      #0A0A18;
+      --card-bg: rgba(10, 10, 24, 0.70);
+      --red:     rgba(255, 60, 60, 0.5);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     [x-cloak] { display: none !important; }
 
-    /* Animated background layers */
-    .bg-gradient-layer {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 20% 30%, rgba(0, 245, 255, 0.06) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 80% at 80% 70%, rgba(123, 47, 255, 0.07) 0%, transparent 60%),
-        radial-gradient(ellipse 50% 50% at 50% 50%, rgba(0, 255, 136, 0.03) 0%, transparent 70%);
-      animation: pulse-gradient 8s ease-in-out infinite alternate;
+    /* ── Base ── */
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      overflow: hidden;
     }
 
-    @keyframes pulse-gradient {
-      0%   { opacity: 0.8; transform: scale(1); }
-      100% { opacity: 1;   transform: scale(1.04); }
+    /* ── Hex grid background ── */
+    body {
+      background-color: var(--bg);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='48'%3E%3Cpath d='M28 0 L56 16 L56 32 L28 48 L0 32 L0 16 Z' fill='none' stroke='%2300F5FF' stroke-opacity='0.07' stroke-width='1'/%3E%3C/svg%3E");
+      background-size: 56px 48px;
+      -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
     }
 
-    .bg-grid-layer {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      background-image:
-        linear-gradient(rgba(0, 245, 255, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 245, 255, 0.04) 1px, transparent 1px);
-      background-size: 60px 60px;
-      animation: grid-drift 20s linear infinite;
-    }
-
-    @keyframes grid-drift {
-      0%   { background-position: 0 0; }
-      100% { background-position: 60px 60px; }
-    }
-
-    .bg-scanlines {
+    /* ── Scanlines ── */
+    body::after {
+      content: '';
       position: fixed;
       inset: 0;
       z-index: 1;
+      pointer-events: none;
       background: repeating-linear-gradient(
         0deg,
         transparent,
         transparent 2px,
-        rgba(0, 0, 0, 0.15) 2px,
-        rgba(0, 0, 0, 0.15) 4px
+        rgba(0, 0, 0, 0.10) 2px,
+        rgba(0, 0, 0, 0.10) 4px
       );
+      animation: scan 8s linear infinite;
+    }
+
+    @keyframes scan {
+      0%   { background-position: 0 0; }
+      100% { background-position: 0 100vh; }
+    }
+
+    /* ── Drifting particle dots ── */
+    .dots {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
       pointer-events: none;
+      overflow: hidden;
     }
 
-    /* Card glow border */
-    .cyber-card {
-      border: 1px solid rgba(0, 245, 255, 0.15);
-      background: rgba(5, 5, 20, 0.75);
-      backdrop-filter: blur(12px);
+    .dots > i {
+      position: absolute;
+      display: block;
+      width: 2px;
+      height: 2px;
+      border-radius: 50%;
+      background: var(--cyan);
+      opacity: 0;
+      animation: drift linear infinite;
+    }
+
+    .dots > i:nth-child(1)  { left:  8%; top: 20%; animation-duration: 14s; animation-delay:  0s;   opacity-start: 0.4; }
+    .dots > i:nth-child(2)  { left: 20%; top: 60%; animation-duration: 18s; animation-delay: -3s;  }
+    .dots > i:nth-child(3)  { left: 35%; top: 10%; animation-duration: 12s; animation-delay: -7s;  }
+    .dots > i:nth-child(4)  { left: 50%; top: 80%; animation-duration: 20s; animation-delay: -2s;  }
+    .dots > i:nth-child(5)  { left: 65%; top: 40%; animation-duration: 16s; animation-delay: -5s;  }
+    .dots > i:nth-child(6)  { left: 78%; top: 15%; animation-duration: 11s; animation-delay: -9s;  }
+    .dots > i:nth-child(7)  { left: 88%; top: 70%; animation-duration: 22s; animation-delay: -1s;  }
+    .dots > i:nth-child(8)  { left: 95%; top: 50%; animation-duration: 15s; animation-delay: -6s;  }
+
+    @keyframes drift {
+      0%   { transform: translateY(0px)   translateX(0px);  opacity: 0;   }
+      10%  { opacity: 0.6; }
+      90%  { opacity: 0.4; }
+      100% { transform: translateY(-120px) translateX(30px); opacity: 0;   }
+    }
+
+    /* ── Corner HUD labels ── */
+    .hud-corner {
+      position: fixed;
+      z-index: 10;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      color: rgba(0, 245, 255, 0.45);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .hud-corner .live-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .hud-tl { top: 16px; left: 16px; }
+    .hud-tr { top: 16px; right: 16px; flex-direction: row-reverse; }
+    .hud-bl { bottom: 16px; left: 16px; }
+    .hud-br { bottom: 16px; right: 16px; flex-direction: row-reverse; }
+
+    /* ── Page layout ── */
+    .page-center {
       position: relative;
+      z-index: 5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 16px;
     }
 
-    .cyber-card::before {
+    /* ── Login card ── */
+    .card {
+      position: relative;
+      width: 380px;
+      background: var(--card-bg);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(0, 245, 255, 0.18);
+      padding: 36px 32px 32px;
+    }
+
+    /* Corner tick marks */
+    .card::before,
+    .card::after,
+    .card-corner-bl,
+    .card-corner-br {
       content: '';
       position: absolute;
-      inset: -1px;
-      background: linear-gradient(135deg, rgba(0, 245, 255, 0.2) 0%, transparent 40%, rgba(123, 47, 255, 0.15) 100%);
-      z-index: -1;
-      border-radius: 2px;
+      width: 10px;
+      height: 10px;
+      opacity: 0.7;
     }
 
-    /* Input styles */
-    .cyber-input {
-      display: block;
-      width: 100%;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: #fff;
+    /* top-left */
+    .card::before {
+      top: -1px; left: -1px;
+      border-top: 1px solid var(--cyan);
+      border-left: 1px solid var(--cyan);
+    }
+
+    /* top-right */
+    .card::after {
+      top: -1px; right: -1px;
+      border-top: 1px solid var(--cyan);
+      border-right: 1px solid var(--cyan);
+    }
+
+    .card-corner-bl {
+      bottom: -1px; left: -1px;
+      border-bottom: 1px solid var(--cyan);
+      border-left: 1px solid var(--cyan);
+    }
+
+    .card-corner-br {
+      bottom: -1px; right: -1px;
+      border-bottom: 1px solid var(--cyan);
+      border-right: 1px solid var(--cyan);
+    }
+
+    /* ── Eyebrow tag ── */
+    .auth-tag {
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg);
+      padding: 0 10px;
       font-family: 'JetBrains Mono', monospace;
-      font-size: 0.875rem;
-      padding: 0.6rem 0.75rem;
-      border-radius: 2px;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-
-    .cyber-input:focus {
-      border-color: #00F5FF;
-      box-shadow: 0 0 0 1px rgba(0, 245, 255, 0.3);
-    }
-
-    .cyber-input::placeholder {
-      color: rgba(255, 255, 255, 0.2);
-    }
-
-    /* Action button */
-    .action-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: #00F5FF;
-      color: #050510;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
+      font-size: 9px;
       font-weight: 700;
-      letter-spacing: 0.1em;
-      padding: 0.65rem 1.5rem;
-      border: none;
-      cursor: pointer;
-      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
-      transition: background 0.15s, opacity 0.15s;
-      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: rgba(0, 245, 255, 0.55);
+      white-space: nowrap;
     }
 
-    .action-btn:hover:not(:disabled) {
-      background: #00FF88;
+    /* ── Turbine glyph ── */
+    .turbine-glyph {
+      display: block;
+      margin: 0 auto 4px;
     }
 
-    .action-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    /* Logo gradient text */
-    .logo-text {
+    /* ── AWID wordmark ── */
+    .wordmark {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 3.5rem;
+      font-size: 88px;
       line-height: 1;
-      background: linear-gradient(90deg, #00F5FF 0%, #7B2FFF 100%);
+      text-align: center;
+      background: linear-gradient(90deg, var(--cyan) 0%, var(--purple) 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      letter-spacing: 0.05em;
+      filter: drop-shadow(0 0 18px rgba(0, 245, 255, 0.35));
+      letter-spacing: 0.03em;
     }
 
-    /* Separator line */
-    .cyber-sep {
-      border: none;
+    .subline {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      font-weight: 400;
+      letter-spacing: 0.22em;
+      color: rgba(255, 255, 255, 0.38);
+      text-align: center;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* ── Cyan divider ── */
+    .cyan-divider {
       height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(0, 245, 255, 0.2), transparent);
+      border: none;
+      margin: 22px 0;
+      background: linear-gradient(90deg, transparent 0%, var(--cyan) 50%, transparent 100%);
+      box-shadow: 0 0 8px rgba(0, 245, 255, 0.35);
+    }
+
+    /* ── Form fields ── */
+    .field-label {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: rgba(255, 255, 255, 0.35);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .field-wrap {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .field-input {
+      display: block;
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid rgba(0, 245, 255, 0.20);
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      padding: 6px 20px 6px 0;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      caret-color: transparent;
+    }
+
+    .field-input:focus {
+      border-bottom-color: var(--cyan);
+      box-shadow: 0 1px 0 0 rgba(0, 245, 255, 0.35);
+    }
+
+    .field-input::placeholder {
+      color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Animated cursor caret */
+    .field-input:focus + .caret {
+      opacity: 1;
+    }
+
+    .caret {
+      position: absolute;
+      right: 0;
+      bottom: 8px;
+      width: 6px;
+      height: 12px;
+      background: var(--cyan);
+      opacity: 0;
+      animation: blink-caret 1s step-end infinite;
+      transition: opacity 0.1s;
+    }
+
+    @keyframes blink-caret {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* ── Retain session checkbox ── */
+    .retain-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 24px;
+    }
+
+    .retain-cb {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border: 1px solid rgba(0, 245, 255, 0.40);
+      background: transparent;
+      cursor: pointer;
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .retain-cb:checked {
+      background: var(--cyan);
+      border-color: var(--cyan);
+    }
+
+    .retain-cb:checked::after {
+      content: '';
+      position: absolute;
+      top: 1px; left: 2px;
+      width: 6px; height: 4px;
+      border-left: 1.5px solid var(--bg);
+      border-bottom: 1.5px solid var(--bg);
+      transform: rotate(-45deg);
+    }
+
+    .retain-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: rgba(255, 255, 255, 0.32);
+      text-transform: uppercase;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* ── Submit button ── */
+    .submit {
+      display: block;
+      width: 100%;
+      background: var(--cyan);
+      color: var(--bg);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      border: none;
+      padding: 13px 20px;
+      cursor: pointer;
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+      position: relative;
+      overflow: hidden;
+      transition: opacity 0.15s;
+    }
+
+    .submit::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%;
+      width: 60%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%);
+      transition: left 0.4s ease;
+    }
+
+    .submit:hover:not(:disabled)::after {
+      left: 150%;
+    }
+
+    .submit:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    /* ── SSO meta row ── */
+    .sso-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .sso-row span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.16em;
+      color: rgba(255, 255, 255, 0.22);
+    }
+
+    .sso-sep {
+      width: 1px;
+      height: 10px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    /* ── Error message ── */
+    .error-msg {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #FF3C3C;
+      margin-top: 12px;
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Authorised warning ── */
+    .auth-warning {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .auth-warning .deco {
+      font-size: 9px;
+      color: var(--red);
+      letter-spacing: 0;
+    }
+
+    .auth-warning span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.16em;
+      color: var(--red);
+      text-transform: uppercase;
+    }
+
+    /* ── Build stamp ── */
+    .build-stamp {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8px;
+      letter-spacing: 0.12em;
+      color: rgba(255, 255, 255, 0.14);
     }
   </style>
 </head>
@@ -183,106 +469,151 @@
   x-data="loginApp()"
   x-init="checkAlreadyLoggedIn()"
   x-cloak
-  class="bg-[#050510] min-h-screen flex items-center justify-center relative overflow-hidden"
 >
-  <!-- Animated background layers -->
-  <div class="bg-gradient-layer" aria-hidden="true"></div>
-  <div class="bg-grid-layer" aria-hidden="true"></div>
-  <div class="bg-scanlines" aria-hidden="true"></div>
 
-  <!-- Login card -->
-  <div class="max-w-sm w-full mx-auto px-6 relative z-10">
-    <div class="cyber-card p-8">
-
-      <!-- AWID Branding -->
-      <div class="mb-6 text-center">
-        <div class="logo-text">AWID</div>
-        <div class="font-mono text-xs text-white/40 tracking-widest uppercase mt-1">
-          APAC Wind Inspections Drones
-        </div>
-      </div>
-
-      <hr class="cyber-sep mb-6">
-
-      <!-- Section label -->
-      <div class="font-mono text-xs text-white/30 tracking-widest uppercase mb-5">
-        &gt; Inspector Auth
-      </div>
-
-      <!-- Login form -->
-      <form @submit.prevent="login()">
-
-        <!-- Username -->
-        <div class="mb-4">
-          <label class="block font-mono text-xs uppercase tracking-wider text-white/50 mb-1">
-            Username
-          </label>
-          <input
-            x-model="username"
-            type="text"
-            name="username"
-            class="cyber-input"
-            autocomplete="username"
-            placeholder="inspector_id"
-            required
-            autofocus
-          >
-        </div>
-
-        <!-- Password -->
-        <div class="mb-5">
-          <label class="block font-mono text-xs uppercase tracking-wider text-white/50 mb-1">
-            Password
-          </label>
-          <input
-            x-model="password"
-            type="password"
-            name="password"
-            class="cyber-input"
-            autocomplete="current-password"
-            placeholder="••••••••"
-            required
-          >
-        </div>
-
-        <!-- Submit button -->
-        <button type="submit" class="action-btn w-full justify-center" :disabled="loading">
-          <span x-show="!loading">&#9658; LOGIN</span>
-          <span x-show="loading">AUTHENTICATING&hellip;</span>
-        </button>
-
-        <!-- Error message -->
-        <p
-          x-show="errorMsg"
-          x-text="errorMsg"
-          class="font-mono text-xs text-[#FF006E] mt-3"
-          style="display:none"
-        ></p>
-
-      </form>
-
-      <!-- Footer status -->
-      <div class="mt-6 pt-4 border-t border-white/5 flex items-center gap-2">
-        <span class="w-1.5 h-1.5 rounded-full bg-[#00FF88] inline-block" style="animation: pulse-dot 2s ease-in-out infinite"></span>
-        <span class="font-mono text-xs text-white/20 tracking-wide">AWID PIPELINE ONLINE</span>
-      </div>
-
-    </div>
-
-    <!-- Build tag -->
-    <div class="text-center mt-3 font-mono text-[10px] text-white/15 tracking-widest">
-      BDDA &middot; BLADE DEFECT DETECTION AGENT
-    </div>
+  <!-- Drifting particles -->
+  <div class="dots" aria-hidden="true">
+    <i></i><i></i><i></i><i></i>
+    <i></i><i></i><i></i><i></i>
   </div>
 
-  <style>
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.3; }
-    }
-  </style>
+  <!-- Corner HUD labels -->
+  <div class="hud-corner hud-tl" aria-hidden="true">
+    <span class="live-dot"></span>
+    <span>SYS · ONLINE</span>
+  </div>
+  <div class="hud-corner hud-tr" aria-hidden="true">
+    <span class="live-dot"></span>
+    <span x-data="{t:''}" x-init="setInterval(()=>{t=new Date().toUTCString().slice(17,25)+' UTC'},1000);t=new Date().toUTCString().slice(17,25)+' UTC'" x-text="t"></span>
+  </div>
+  <div class="hud-corner hud-bl" aria-hidden="true">
+    <span>AWID · BDDA · v5.0</span>
+  </div>
+  <div class="hud-corner hud-br" aria-hidden="true">
+    <span>APAC · WIND · OPS</span>
+  </div>
 
-  <!-- Alpine loginApp component -->
+  <!-- Page center -->
+  <div class="page-center">
+    <div style="width:380px;">
+
+      <!-- Card -->
+      <div class="card">
+        <div class="card-corner-bl"></div>
+        <div class="card-corner-br"></div>
+
+        <!-- Eyebrow tag -->
+        <div class="auth-tag">// AUTH TERMINAL</div>
+
+        <!-- Turbine SVG glyph -->
+        <svg class="turbine-glyph" width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- dashed purple orbit -->
+          <circle cx="22" cy="22" r="19" stroke="#7B2FFF" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>
+          <!-- cross lines -->
+          <line x1="22" y1="4"  x2="22" y2="40" stroke="#00F5FF" stroke-width="1" stroke-opacity="0.5"/>
+          <line x1="4"  y1="22" x2="40" y2="22" stroke="#00F5FF" stroke-width="1" stroke-opacity="0.5"/>
+          <!-- circle hub -->
+          <circle cx="22" cy="22" r="5" stroke="#00F5FF" stroke-width="1.5" fill="rgba(0,245,255,0.08)"/>
+          <circle cx="22" cy="22" r="2" fill="#00F5FF" opacity="0.7"/>
+        </svg>
+
+        <!-- AWID wordmark -->
+        <div class="wordmark">AWID</div>
+        <div class="subline">APAC &middot; WIND INSPECTIONS DRONES</div>
+
+        <!-- Divider -->
+        <hr class="cyan-divider">
+
+        <!-- Login form -->
+        <form @submit.prevent="login()">
+
+          <!-- Username -->
+          <div>
+            <label class="field-label" for="login-username">Identifier</label>
+            <div class="field-wrap">
+              <input
+                id="login-username"
+                x-model="username"
+                type="text"
+                name="username"
+                class="field-input"
+                autocomplete="username"
+                placeholder="inspector_id"
+                required
+                autofocus
+              >
+              <span class="caret" aria-hidden="true"></span>
+            </div>
+          </div>
+
+          <!-- Password -->
+          <div>
+            <label class="field-label" for="login-password">Access Key</label>
+            <div class="field-wrap">
+              <input
+                id="login-password"
+                x-model="password"
+                type="password"
+                name="password"
+                class="field-input"
+                autocomplete="current-password"
+                placeholder="••••••••"
+                required
+              >
+              <span class="caret" aria-hidden="true"></span>
+            </div>
+          </div>
+
+          <!-- Retain session -->
+          <div class="retain-row">
+            <input type="checkbox" class="retain-cb" id="retain-cb">
+            <label class="retain-label" for="retain-cb">Retain Session</label>
+          </div>
+
+          <!-- Submit -->
+          <button type="submit" class="submit" :disabled="loading">
+            <span x-show="!loading">&#9658;&nbsp; AUTHENTICATE</span>
+            <span x-show="loading">AUTHENTICATING&hellip;</span>
+          </button>
+
+          <!-- Error -->
+          <p
+            x-show="errorMsg"
+            x-text="errorMsg"
+            class="error-msg"
+            style="display:none"
+          ></p>
+
+        </form>
+
+        <!-- SSO meta -->
+        <div class="sso-row">
+          <span>SSO</span>
+          <div class="sso-sep"></div>
+          <span>SAML</span>
+          <div class="sso-sep"></div>
+          <span>WEBAUTHN</span>
+        </div>
+
+        <!-- Auth warning -->
+        <div class="auth-warning">
+          <span class="deco">╌╌╌</span>
+          <span>Authorised Personnel Only</span>
+          <span class="deco">╌╌╌</span>
+        </div>
+
+      </div><!-- /card -->
+
+      <!-- Build stamp -->
+      <div class="build-stamp">
+        <span>ENCRYPTED // E2E</span>
+        <span>SHA-256 &middot; 4F2A</span>
+      </div>
+
+    </div>
+  </div><!-- /page-center -->
+
+  <!-- Alpine loginApp -->
   <script>
     function loginApp() {
       return {
@@ -313,7 +644,6 @@
             }
             const data = await res.json();
             localStorage.setItem('bdda_token', data.access_token);
-            // Decode username from JWT payload (base64url → JSON → .sub)
             try {
               const payload = JSON.parse(atob(data.access_token.split('.')[1]));
               localStorage.setItem('bdda_username', payload.sub);
