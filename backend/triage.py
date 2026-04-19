@@ -1,5 +1,5 @@
 """
-triage.py — Stage 1: Fast defect triage using Gemini 2.0 Flash
+triage.py — Stage 1: Fast defect triage using Claude Opus 4.6
 Sends 4 representative tiles per image, gets YES/NO defect + confidence.
 Flags images for full classification. Discards clean shots.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
-import google.generativeai as genai
+import anthropic
 
 from tile import tile_image, select_representative_tiles, get_image_dimensions
 
@@ -89,56 +89,41 @@ class TriageSummary:
         return self.flagged_images / self.total_images
 
 
-# ─── GEMINI API CLIENT ────────────────────────────────────────────────────────
+# ─── ANTHROPIC API CLIENT ──────────────────────────────────────────────────────
 
-# Gemini 2.0 Flash pricing (per million tokens)
-# Input: $0.10/M tokens   Output: $0.40/M tokens
-_INPUT_COST_PER_TOKEN  = 0.10 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000
-
-_MODEL = "gemini-2.0-flash"
-
-
-def _build_parts(image_b64_list: List[str], user_prompt: str) -> List:
-    """Build Gemini content parts: images then text."""
-    import base64
-    parts = []
-    for b64 in image_b64_list:
-        parts.append({
-            "inline_data": {
-                "mime_type": "image/jpeg",
-                "data": b64,
-            }
-        })
-    parts.append(user_prompt)
-    return parts
-
-
-def call_gemini_triage(
-    image_b64_list: List[str],
+def call_claude_triage(
+    image_b64_list: List[str],  # list of raw base64 strings (NO data:image/... prefix)
     blade: str,
     zone: str,
     position: str,
     turbine_id: str,
     turbine_model: str,
     inspection_date: str,
-    location_type: str,
+    location_type: str,  # "onshore" or "offshore"
     api_key: str,
+    model: str = "claude-opus-4-6",
     max_retries: int = 3,
 ) -> Dict:
     """
-    Call Gemini 2.0 Flash with image tiles for triage.
+    Call Claude Opus 4.6 with image tiles for triage.
     Returns parsed JSON response dict or error dict.
-    """
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(
-        model_name=_MODEL,
-        system_instruction=TRIAGE_SYSTEM_PROMPT,
-    )
 
-    import base64
-    from PIL import Image as PILImage
-    import io
+    CRITICAL: image_b64_list must contain raw base64 strings with NO data URI prefix
+    (i.e., no "data:image/jpeg;base64," prefix — Anthropic SDK uses raw base64 only).
+    """
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Build Anthropic-format content: images first, then the text prompt
+    content = []
+    for b64 in image_b64_list:
+        content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": b64,
+            },
+        })
 
     offshore_flag = OFFSHORE_FLAG if location_type == "offshore" else ""
     user_prompt = TRIAGE_USER_PROMPT.format(
@@ -150,58 +135,67 @@ def call_gemini_triage(
         inspection_date=inspection_date,
         offshore_flag=offshore_flag,
     )
+    content.append({"type": "text", "text": user_prompt})
 
-    # Build content: PIL images then text
-    content = []
-    for b64 in image_b64_list:
-        img_bytes = base64.b64decode(b64)
-        pil_img = PILImage.open(io.BytesIO(img_bytes))
-        content.append(pil_img)
-    content.append(user_prompt)
-
+    raw = ""
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(
-                content,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=300,
-                    temperature=0.1,
-                ),
+            response = client.messages.create(
+                model=model,
+                max_tokens=300,
+                system=TRIAGE_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": content}],
             )
-            raw = response.text.strip()
+            raw = response.content[0].text.strip()
 
-            # Strip markdown code fences
+            # Strip markdown code fences robustly
             cleaned = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
-            cleaned = re.sub(r"\s*```\s*$", "", cleaned, flags=re.MULTILINE).strip()
+            cleaned = re.sub(r"\s*```\s*$", "", cleaned, flags=re.MULTILINE)
+            cleaned = cleaned.strip()
 
             parsed = json.loads(cleaned)
-            if not isinstance(parsed, dict):
-                raise json.JSONDecodeError(f"Expected dict, got {type(parsed).__name__}", cleaned, 0)
 
-            # Attach token usage
-            usage = response.usage_metadata
-            parsed["input_tokens"] = usage.prompt_token_count or 0
-            parsed["output_tokens"] = usage.candidates_token_count or 0
+            # Guard: must return a JSON object
+            if not isinstance(parsed, dict):
+                raise json.JSONDecodeError(
+                    f"Expected JSON object, got {type(parsed).__name__}", cleaned, 0
+                )
+
+            # Attach token usage for cost tracking
+            parsed["input_tokens"] = response.usage.input_tokens
+            parsed["output_tokens"] = response.usage.output_tokens
             return parsed
 
         except json.JSONDecodeError:
+            # Per spec: JSON parse failures set has_defect=True without retry
             return {"has_defect": True, "confidence": 1.0, "error": "json_parse_fail"}
 
-        except Exception as e:
-            err_str = str(e).lower()
-            if "quota" in err_str or "rate" in err_str or "429" in err_str:
-                sleep_secs = (2 ** attempt) * 10
+        except anthropic.RateLimitError:
+            sleep_secs = (2 ** attempt) * 10  # 10s, 20s, 40s
+            if attempt == max_retries - 1:
+                return {"error": "rate_limit", "has_defect": True}
+            time.sleep(sleep_secs)
+
+        except anthropic.APIStatusError as e:
+            if e.status_code >= 500:
+                # Transient server error — retry with backoff
                 if attempt == max_retries - 1:
-                    return {"error": "rate_limit", "has_defect": True}
-                time.sleep(sleep_secs)
-            elif "500" in err_str or "503" in err_str or "unavailable" in err_str:
-                if attempt == max_retries - 1:
-                    return {"error": f"server_error: {e}", "has_defect": True}
+                    return {"error": f"server_error_{e.status_code}", "has_defect": True}
                 time.sleep(2 ** attempt)
             else:
-                if attempt == max_retries - 1:
-                    return {"error": str(e), "has_defect": True}
-                time.sleep(2 ** attempt)
+                # 4xx client error (bad key, invalid request) — raise immediately
+                raise
+
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError):
+            sleep_secs = 2 ** attempt  # 1s, 2s, 4s
+            if attempt == max_retries - 1:
+                return {"error": "connection", "has_defect": True}
+            time.sleep(sleep_secs)
+
+        except Exception as e:
+            if attempt == max_retries - 1:
+                return {"error": str(e), "has_defect": True}
+            time.sleep(2 ** attempt)
 
     return {"error": "max_retries_exceeded", "has_defect": True}
 
@@ -218,14 +212,27 @@ def triage_image(
     turbine_model: str = "",
     inspection_date: str = "",
 ) -> TriageResult:
+    """
+    Triage a single image using Claude Opus 4.6.
+
+    image_info dict must have: path, turbine_id, blade, zone, position, mission_folder
+
+    Confidence thresholds are derived from location_type:
+      - offshore: 0.2  (stricter recall)
+      - onshore:  0.3
+    """
     path = Path(image_info["path"])
     effective_turbine_id = turbine_id or image_info.get("turbine_id", "")
+
+    # Derive threshold from location type
     threshold = 0.2 if location_type == "offshore" else 0.3
 
+    # Generate tiles
     try:
         tiles, coords = tile_image(path, tile_size=tile_size, overlap=0.2, as_base64=False)
         w, h = get_image_dimensions(path)
         rep_tiles, rep_coords = select_representative_tiles(tiles, coords, w, h, n=n_tiles)
+        # Convert to base64
         from tile import tile_to_base64
         tiles_b64 = [tile_to_base64(t) for t in rep_tiles]
     except Exception as e:
@@ -244,7 +251,8 @@ def triage_image(
             cost_usd=0.0,
         )
 
-    result = call_gemini_triage(
+    # Call Claude API
+    result = call_claude_triage(
         tiles_b64,
         blade=image_info["blade"],
         zone=image_info["zone"],
@@ -256,6 +264,7 @@ def triage_image(
         api_key=api_key,
     )
 
+    # Handle API-down fallback (error with has_defect=True conservative flag)
     if result.get("error") and "input_tokens" not in result:
         return TriageResult(
             image_path=path,
@@ -274,12 +283,15 @@ def triage_image(
 
     has_defect = result.get("has_defect", False)
     confidence = float(result.get("confidence", 0.0))
+
+    # Apply location-based confidence threshold
     if confidence < threshold:
         has_defect = False
 
+    # Calculate cost: $5/M input tokens, $25/M output tokens (Opus 4.6 pricing)
     input_tokens = result.get("input_tokens", 0)
     output_tokens = result.get("output_tokens", 0)
-    call_cost = (input_tokens * _INPUT_COST_PER_TOKEN) + (output_tokens * _OUTPUT_COST_PER_TOKEN)
+    call_cost = (input_tokens * 5.0 / 1_000_000) + (output_tokens * 25.0 / 1_000_000)
 
     return TriageResult(
         image_path=path,
@@ -299,6 +311,7 @@ def triage_image(
 # ─── ERROR LOGGING ─────────────────────────────────────────────────────────────
 
 def _append_error_json(job_dir: Path, entry: Dict) -> None:
+    """Append an error entry to errors.json in job_dir (creates file if needed)."""
     errors_path = job_dir / "errors.json"
     existing = []
     if errors_path.exists():
@@ -325,6 +338,23 @@ def triage_batch(
     delay_between_calls: float = 0.5,
     verbose: bool = True,
 ) -> TriageSummary:
+    """
+    Triage a batch of images sequentially using Claude Opus 4.6.
+
+    Args:
+        images: list of image_info dicts from ingest.get_all_images_flat()
+        api_key: Anthropic API key
+        n_tiles: tiles per image to analyze (default 4 for Opus 4.6)
+        location_type: "onshore" or "offshore" — selects confidence threshold
+        job_dir: directory for errors.json output (optional)
+        turbine_model: turbine model string for prompt context
+        inspection_date: ISO date string for prompt context
+        delay_between_calls: seconds between API calls (rate limiting)
+        verbose: print progress
+
+    Returns:
+        TriageSummary with all results and triage_cost_usd
+    """
     if not images:
         raise ValueError("No images to triage")
 
@@ -333,28 +363,42 @@ def triage_batch(
     flagged = 0
     errors = 0
     running_cost: float = 0.0
+
     threshold = 0.2 if location_type == "offshore" else 0.3
 
     if verbose:
         print(f"\nTriaging {len(images)} images for turbine {turbine_id}...")
-        print(f"Settings: {n_tiles} tiles/image, location: {location_type}, threshold: {threshold}, model: {_MODEL}")
+        print(f"Settings: {n_tiles} tiles/image, location: {location_type}, threshold: {threshold}")
 
     for i, img_info in enumerate(images):
         if verbose and i % 10 == 0:
             print(f"  [{i+1}/{len(images)}] {Path(img_info['path']).name} | B{img_info['blade']} {img_info['zone']} {img_info['position']}")
 
+        # First attempt
         result = triage_image(
-            img_info, api_key, n_tiles=n_tiles, location_type=location_type,
-            turbine_id=turbine_id, turbine_model=turbine_model, inspection_date=inspection_date,
+            img_info,
+            api_key,
+            n_tiles=n_tiles,
+            location_type=location_type,
+            turbine_id=turbine_id,
+            turbine_model=turbine_model,
+            inspection_date=inspection_date,
         )
 
+        # Per-image retry: if first attempt errored, retry once
         if result.error:
             if verbose:
-                print(f"    Retry for {Path(img_info['path']).name} (error: {result.error})")
+                print(f"    Retry attempt 2 for {Path(img_info['path']).name} (first error: {result.error})")
             result = triage_image(
-                img_info, api_key, n_tiles=n_tiles, location_type=location_type,
-                turbine_id=turbine_id, turbine_model=turbine_model, inspection_date=inspection_date,
+                img_info,
+                api_key,
+                n_tiles=n_tiles,
+                location_type=location_type,
+                turbine_id=turbine_id,
+                turbine_model=turbine_model,
+                inspection_date=inspection_date,
             )
+            # If second attempt also errors, log and continue
             if result.error and job_dir is not None:
                 _append_error_json(job_dir, {
                     "timestamp": datetime.now().isoformat(),
@@ -390,13 +434,15 @@ def triage_batch(
     )
 
     if verbose:
-        print(f"\nTriage complete: Total={summary.total_images} | Flagged={summary.flagged_images} ({summary.flag_rate:.0%}) | Clean={summary.clean_images} | Errors={summary.error_images}")
+        print(f"\nTriage complete:")
+        print(f"  Total: {summary.total_images} | Flagged: {summary.flagged_images} ({summary.flag_rate:.0%}) | Clean: {summary.clean_images} | Errors: {summary.error_images}")
         print(f"  Triage cost: ${running_cost:.4f}")
 
     return summary
 
 
 def save_triage_results(summary: TriageSummary, output_path: Path):
+    """Save triage results to JSON for next pipeline stage."""
     data = {
         "turbine_id": summary.turbine_id,
         "total_images": summary.total_images,
@@ -430,12 +476,20 @@ def save_triage_results(summary: TriageSummary, output_path: Path):
 
 
 def load_flagged_images(triage_json_path: Path) -> List[Dict]:
+    """Load only flagged images from a saved triage JSON."""
     with open(triage_json_path) as f:
         data = json.load(f)
     return [r for r in data["results"] if r["has_defect"]]
 
 
 if __name__ == "__main__":
-    print("triage.py — Stage 1 Gemini 2.0 Flash triage module")
-    key = os.environ.get("GOOGLE_API_KEY")
-    print("GOOGLE_API_KEY found" if key else "GOOGLE_API_KEY not set")
+    import sys
+    print("triage.py — Stage 1 Claude Opus 4.6 triage module")
+    print("Usage: import triage and call triage_batch(images, api_key)")
+    print(f"API key expected in env: ANTHROPIC_API_KEY")
+
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if key:
+        print("ANTHROPIC_API_KEY found in environment")
+    else:
+        print("ANTHROPIC_API_KEY not set — set it before running triage")
