@@ -553,13 +553,33 @@
               <input
                 id="login-password"
                 x-model="password"
-                type="password"
+                :type="showPwd ? 'text' : 'password'"
                 name="password"
                 class="field-input"
+                style="padding-right:36px"
                 autocomplete="current-password"
                 placeholder="••••••••"
                 required
               >
+              <button
+                type="button"
+                @click="showPwd = !showPwd"
+                :aria-label="showPwd ? 'Hide password' : 'Reveal password'"
+                style="position:absolute;right:0;bottom:4px;background:none;border:none;padding:4px;cursor:pointer;color:rgba(0,245,255,0.4);line-height:1;transition:color 0.15s"
+                :style="showPwd ? 'color:rgba(0,245,255,0.9)' : ''"
+              >
+                <!-- Eye / Eye-off SVG -->
+                <svg x-show="!showPwd" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <ellipse cx="12" cy="12" rx="10" ry="6"/>
+                  <circle cx="12" cy="12" r="2.5"/>
+                </svg>
+                <svg x-show="showPwd" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="3" y1="3" x2="21" y2="21"/>
+                  <path d="M10.58 10.58A2.5 2.5 0 0 0 14.42 13.42"/>
+                  <path d="M9.9 4.24A10 10 0 0 1 12 4c5 0 9 3.58 9 8a9.77 9.77 0 0 1-.8 2.5"/>
+                  <path d="M3 12a9.77 9.77 0 0 0 2.34 3.76M6.53 6.53A9.77 9.77 0 0 0 3 12"/>
+                </svg>
+              </button>
               <span class="caret" aria-hidden="true"></span>
             </div>
           </div>
@@ -619,6 +639,7 @@
       return {
         username: '',
         password: '',
+        showPwd: false,
         loading: false,
         errorMsg: '',
 
