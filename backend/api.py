@@ -24,8 +24,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordRequestForm
 
-from backend.auth import create_token, get_current_user, hash_password, verify_password
-from backend.database import get_user_by_username, create_user as db_create_user, init_db
+from auth import create_token, get_current_user, hash_password, verify_password
+from database import get_user_by_username, create_user as db_create_user, init_db
 
 # ─── APP SETUP ────────────────────────────────────────────────────────────────
 
