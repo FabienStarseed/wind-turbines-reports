@@ -658,9 +658,9 @@ async def health():
 # ─── STATIC FILES ────────────────────────────────────────────────────────────
 
 @app.get("/login", include_in_schema=False)
-async def login_page():
-    from fastapi.responses import HTMLResponse
-    return HTMLResponse('<script>window.location.replace("/")</script>', headers={"Cache-Control": "no-store"})
+async def login_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/", status_code=301)
 
 
 @app.get("/", include_in_schema=False)
