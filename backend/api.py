@@ -659,7 +659,8 @@ async def health():
 
 @app.get("/login", include_in_schema=False)
 async def login_page():
-    return FileResponse(str(FRONTEND_DIR / "login.html"))
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse('<script>window.location.replace("/")</script>', headers={"Cache-Control": "no-store"})
 
 
 @app.get("/", include_in_schema=False)
