@@ -644,10 +644,8 @@
         errorMsg: '',
 
         checkAlreadyLoggedIn() {
-          if (localStorage.getItem('bdda_token')) {
-            const params = new URLSearchParams(window.location.search);
-            window.location.href = params.get('next') || '/';
-          }
+          // Auth bypassed — redirect directly to dashboard without checking token
+          window.location.href = '/';
         },
 
         async login() {
