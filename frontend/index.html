@@ -841,14 +841,6 @@
 
         // ── Init ──
         async init() {
-          if (!this.token) { window.location.href = '/login'; return; }
-          if (!this.username) {
-            try {
-              const p = JSON.parse(atob(this.token.split('.')[1]));
-              this.username = p.sub || '';
-              localStorage.setItem('bdda_username', this.username);
-            } catch {}
-          }
           this.$nextTick(() => {
             const dateInput = document.querySelector('input[name="inspection_date"]');
             if (dateInput && !dateInput.value) {
@@ -857,22 +849,9 @@
           });
         },
 
-        // ── Auth ──
-        logout() {
-          localStorage.removeItem('bdda_token');
-          localStorage.removeItem('bdda_username');
-          window.location.href = '/login';
-        },
-
-        // ── API wrapper (Bearer injection + X-New-Token silent refresh + 401 redirect) ──
+        // ── API wrapper (no auth — bypassed for development) ──
         async apiFetch(path, opts = {}) {
-          const token = localStorage.getItem('bdda_token');
-          if (!token) { this.logout(); return null; }
-          const headers = { 'Authorization': `Bearer ${token}`, ...(opts.headers || {}) };
-          const res = await fetch(path, { ...opts, headers });
-          const newToken = res.headers.get('X-New-Token');
-          if (newToken) { localStorage.setItem('bdda_token', newToken); this.token = newToken; }
-          if (res.status === 401) { this.logout(); return null; }
+          const res = await fetch(path, { ...opts });
           return res;
         },
 
