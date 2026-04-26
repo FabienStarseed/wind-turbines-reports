@@ -1,266 +1,1051 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BDDA — Blade Defect Detection Agent</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWID — Inspection Dashboard</title>
+
+  <!-- Tailwind Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg:      '#050510',
+            cyan:    '#00F5FF',
+            green:   '#00FF88',
+            magenta: '#FF006E',
+            amber:   '#FFB800',
+            purple:  '#7B2FFF',
+          },
+          fontFamily: {
+            bebas: ['"Bebas Neue"', 'cursive'],
+            mono:  ['"JetBrains Mono"', '"DM Mono"', 'monospace'],
+            syne:  ['Syne', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Alpine.js v3 -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
 </head>
-<body>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- HEADER                                                                      -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<header class="app-header">
-  <div class="header-inner">
-    <div class="brand">
-      <div class="brand-icon">⚙</div>
-      <div class="brand-text">
-        <span class="brand-name">BDDA</span>
-        <span class="brand-sub">Blade Defect Detection Agent</span>
-      </div>
+<body x-data="app()" x-init="init()" x-cloak class="bg-[#050510] min-h-screen text-white">
+
+  <!-- Scanlines overlay -->
+  <div class="scanlines"></div>
+
+  <!-- ── HEADER ──────────────────────────────────────────────────────────── -->
+  <header class="fixed top-0 left-0 right-0 h-16 z-[100] flex items-center px-6 border-b border-white/[0.06]"
+          style="background: rgba(5,5,20,0.85); backdrop-filter: blur(12px);">
+
+    <!-- Left: Brand -->
+    <div class="flex items-baseline gap-3 min-w-[160px]">
+      <span class="font-bebas text-3xl leading-none bg-gradient-to-r from-[#00F5FF] to-[#7B2FFF] bg-clip-text text-transparent">AWID</span>
+      <span class="font-mono text-[9px] text-white/30 tracking-widest uppercase hidden sm:block">APAC WIND INSPECTIONS DRONES</span>
     </div>
-    <div class="header-meta">
-      <span class="api-status" id="apiStatus">Checking APIs…</span>
-    </div>
-  </div>
-</header>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- MAIN CONTENT                                                                -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<main class="app-main">
-
-  <!-- LEFT PANEL: Form -->
-  <div class="panel left-panel">
-    <div class="panel-title">New Inspection Report</div>
-
-    <form id="uploadForm" enctype="multipart/form-data">
-
-      <!-- ── Turbine Identity ── -->
-      <div class="form-section">
-        <div class="form-section-label">Turbine Identity</div>
-        <div class="form-grid">
-          <div class="field">
-            <label>Turbine ID <span class="req">*</span></label>
-            <input type="text" name="turbine_id" placeholder="JAP19" required>
-          </div>
-          <div class="field">
-            <label>Turbine Model <span class="req">*</span></label>
-            <input type="text" name="turbine_model" placeholder="Vestas V90-2.0 MW" required>
-          </div>
-          <div class="field">
-            <label>Site Name <span class="req">*</span></label>
-            <input type="text" name="site_name" placeholder="Tomamae Wind Farm" required>
-          </div>
-          <div class="field">
-            <label>Country <span class="req">*</span></label>
-            <select name="country" required>
-              <option value="">Select…</option>
-              <option value="Japan">Japan</option>
-              <option value="Philippines">Philippines</option>
-              <option value="Taiwan">Taiwan</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-grid form-grid-3">
-          <div class="field">
-            <label>Hub Height (m)</label>
-            <input type="number" name="hub_height_m" placeholder="80">
-          </div>
-          <div class="field">
-            <label>Rotor Diameter (m)</label>
-            <input type="number" name="rotor_diameter_m" placeholder="90">
-          </div>
-          <div class="field">
-            <label>Blade Length (m)</label>
-            <input type="number" name="blade_length_m" placeholder="44">
-          </div>
-        </div>
-        <div class="form-grid form-grid-2">
-          <div class="field">
-            <label>GPS Latitude</label>
-            <input type="text" name="gps_lat" placeholder="44.3123">
-          </div>
-          <div class="field">
-            <label>GPS Longitude</label>
-            <input type="text" name="gps_lon" placeholder="141.6789">
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Inspection Details ── -->
-      <div class="form-section">
-        <div class="form-section-label">Inspection Details</div>
-        <div class="form-grid">
-          <div class="field">
-            <label>Inspector Name <span class="req">*</span></label>
-            <input type="text" name="inspector_name" placeholder="Your name" required>
-          </div>
-          <div class="field">
-            <label>Inspection Date <span class="req">*</span></label>
-            <input type="date" name="inspection_date" required>
-          </div>
-          <div class="field">
-            <label>Drone Model</label>
-            <input type="text" name="drone_model" placeholder="DJI Matrice 300 RTK" value="DJI Matrice 300 RTK">
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Environmental Conditions ── -->
-      <div class="form-section">
-        <div class="form-section-label">Environmental Conditions</div>
-        <div class="form-grid form-grid-4">
-          <div class="field">
-            <label>Weather</label>
-            <input type="text" name="weather" placeholder="Clear, sunny">
-          </div>
-          <div class="field">
-            <label>Wind Speed (m/s)</label>
-            <input type="number" step="0.1" name="wind_speed_ms" placeholder="4.2">
-          </div>
-          <div class="field">
-            <label>Temperature (°C)</label>
-            <input type="number" name="temperature_c" placeholder="22">
-          </div>
-          <div class="field">
-            <label>Visibility (km)</label>
-            <input type="number" name="visibility_km" placeholder="20">
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Notes ── -->
-      <div class="form-section">
-        <div class="form-section-label">Inspection Notes</div>
-        <div class="field">
-          <textarea name="notes" rows="3" placeholder="Any limitations, blade access issues, weather notes…"></textarea>
-        </div>
-      </div>
-
-      <!-- ── Image Upload ── -->
-      <div class="form-section">
-        <div class="form-section-label">Upload Images <span class="req">*</span></div>
-        <div class="drop-zone" id="dropZone">
-          <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required>
-          <div class="drop-icon">📁</div>
-          <div class="drop-text">Drag &amp; drop your DJI mission folder ZIP</div>
-          <div class="drop-sub">or click to select files — ZIP preferred for full folder structure</div>
-          <div class="drop-hint">Supported: ZIP (DJI mission folder) · JPG/PNG (individual images)</div>
-        </div>
-        <div class="file-preview" id="filePreview" style="display:none;"></div>
-      </div>
-
-      <button type="submit" class="submit-btn" id="submitBtn">
-        <span class="btn-icon">▶</span>
-        Generate Inspection Report
+    <!-- Center: Tab Nav -->
+    <nav class="flex-1 flex justify-center gap-1">
+      <button @click="activeTab='new-inspection'"
+              class="font-mono text-xs uppercase tracking-widest px-4 py-5 border-b-2 transition-colors"
+              :class="activeTab==='new-inspection' ? 'border-[#FFB800] text-[#FFB800]' : 'border-transparent text-white/40 hover:text-white/70'">
+        NEW INSPECTION
       </button>
+      <button @click="activeTab='history'; if(!historyLoaded) loadHistory()"
+              class="font-mono text-xs uppercase tracking-widest px-4 py-5 border-b-2 transition-colors"
+              :class="activeTab==='history' ? 'border-[#FFB800] text-[#FFB800]' : 'border-transparent text-white/40 hover:text-white/70'">
+        HISTORY
+      </button>
+    </nav>
 
-    </form>
-  </div>
+    <!-- Right: User + Logout -->
+    <div class="flex items-center gap-3 min-w-[160px] justify-end">
+      <span class="font-mono text-xs text-[#00F5FF]" x-text="username"></span>
+      <button @click="logout()" class="action-btn sm amber">LOGOUT</button>
+    </div>
+  </header>
 
-  <!-- RIGHT PANEL: Status + History -->
-  <div class="panel right-panel">
+  <!-- ── MAIN CONTENT ──────────────────────────────────────────────────── -->
+  <main class="pt-16 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <!-- Active Job -->
-    <div class="panel-section" id="jobPanel" style="display:none;">
-      <div class="panel-title">Analysis Progress</div>
-      <div class="job-card" id="jobCard">
-        <div class="job-header">
-          <span class="job-turbine" id="jobTurbineId">—</span>
-          <span class="job-id" id="jobId">—</span>
-        </div>
-        <div class="progress-stages" id="progressStages">
-          <div class="stage-item" data-stage="ingesting">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Ingest Images</div>
-          </div>
-          <div class="stage-item" data-stage="triaging">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Triage (Kimi)</div>
-          </div>
-          <div class="stage-item" data-stage="classifying">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Classify (Gemini)</div>
-          </div>
-          <div class="stage-item" data-stage="analyzing">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Analyze (Claude)</div>
-          </div>
-          <div class="stage-item" data-stage="generating_report">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Build PDF</div>
-          </div>
-          <div class="stage-item" data-stage="complete">
-            <div class="stage-dot"></div>
-            <div class="stage-label">Complete</div>
-          </div>
-        </div>
-        <div class="progress-bar-wrap">
-          <div class="progress-bar" id="progressBar" style="width:0%"></div>
-        </div>
-        <div class="job-message" id="jobMessage">Queued…</div>
-        <div class="job-stats" id="jobStats"></div>
-
-        <a class="download-btn" id="downloadBtn" style="display:none;" href="#">
-          ⬇ Download Report PDF
-        </a>
-        <div class="error-block" id="errorBlock" style="display:none;"></div>
+    <!-- NEW INSPECTION TAB -->
+    <div x-show="activeTab==='new-inspection'">
+      <div class="eyebrow-line mb-6">
+        <span class="eyebrow-label">Blade Defect Detection Agent · AI Pipeline</span>
       </div>
+      <div class="flex items-baseline gap-4 mb-6">
+        <span class="font-bebas text-5xl bg-gradient-to-r from-[#00F5FF] to-[#7B2FFF] bg-clip-text text-transparent leading-none">NEW INSPECTION</span>
+        <span class="font-mono text-[10px] text-white/25 uppercase tracking-widest">// AWID OPS</span>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+
+        <!-- ── FORM COLUMN (3/5) ────────────────────────────────────────── -->
+        <div class="lg:col-span-3">
+          <div class="insp-panel">
+            <div class="insp-panel-corners">
+              <span class="tl"></span><span class="tr"></span>
+              <span class="bl"></span><span class="br"></span>
+            </div>
+            <div class="insp-panel-tag">// NEW INSPECTION</div>
+          <form @submit.prevent="submit()" enctype="multipart/form-data">
+
+            <!-- SECTION 1: TURBINE IDENTITY -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-2"
+                 @click="sections.identity = !sections.identity">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">TURBINE IDENTITY</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.identity ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.identity" x-transition>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Turbine ID <span class="text-[#FF006E]">*</span></label>
+                  <input type="text" name="turbine_id" placeholder="JAP19" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Turbine Model <span class="text-[#FF006E]">*</span></label>
+                  <input type="text" name="turbine_model" placeholder="Vestas V150-4.5" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Site Name <span class="text-[#FF006E]">*</span></label>
+                  <input type="text" name="site_name" placeholder="Akita Offshore Wind" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Country <span class="text-[#FF006E]">*</span></label>
+                  <select name="country" required class="cyber-input w-full">
+                    <option value="">— Select —</option>
+                    <option>Japan</option>
+                    <option>Philippines</option>
+                    <option>Taiwan</option>
+                    <option>Australia</option>
+                    <option>Vietnam</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-x-4 mb-4">
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Hub Height (m)</label>
+                  <input type="number" name="hub_height_m" placeholder="120" step="0.1" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Rotor Diam (m)</label>
+                  <input type="number" name="rotor_diameter_m" placeholder="150" step="0.1" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Blade Length (m)</label>
+                  <input type="number" name="blade_length_m" placeholder="73" step="0.1" class="cyber-input w-full">
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-x-4 mb-4">
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">GPS Latitude</label>
+                  <input type="text" name="gps_lat" placeholder="39.7192" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">GPS Longitude</label>
+                  <input type="text" name="gps_lon" placeholder="140.1023" class="cyber-input w-full">
+                </div>
+              </div>
+            </div>
+
+            <!-- SECTION 2: INSPECTION DETAILS -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-6"
+                 @click="sections.details = !sections.details">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">INSPECTION DETAILS</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.details ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.details" x-transition>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Inspector Name <span class="text-[#FF006E]">*</span></label>
+                  <input type="text" name="inspector_name" placeholder="Tanaka Hiroshi" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Inspection Date <span class="text-[#FF006E]">*</span></label>
+                  <input type="date" name="inspection_date" required class="cyber-input w-full">
+                </div>
+                <div class="mb-4 sm:col-span-2">
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Drone Model</label>
+                  <input type="text" name="drone_model" value="DJI Matrice 300 RTK" class="cyber-input w-full">
+                </div>
+              </div>
+            </div>
+
+            <!-- SECTION 3: ENVIRONMENTAL CONDITIONS -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-6"
+                 @click="sections.environment = !sections.environment">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">ENVIRONMENTAL CONDITIONS</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.environment ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.environment" x-transition>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 mb-4">
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Weather</label>
+                  <input type="text" name="weather" placeholder="Partly cloudy" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Wind (m/s)</label>
+                  <input type="number" name="wind_speed_ms" placeholder="4.2" step="0.1" min="0" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Temp (°C)</label>
+                  <input type="number" name="temperature_c" placeholder="18" step="0.1" class="cyber-input w-full">
+                </div>
+                <div>
+                  <label class="block font-mono text-[10px] text-white/50 uppercase tracking-wider mb-1">Visibility (km)</label>
+                  <input type="number" name="visibility_km" placeholder="15" step="0.1" min="0" class="cyber-input w-full">
+                </div>
+              </div>
+            </div>
+
+            <!-- SECTION 4: INSPECTION NOTES -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-6"
+                 @click="sections.notes = !sections.notes">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">INSPECTION NOTES</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.notes ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.notes" x-transition>
+              <div class="mb-4">
+                <textarea name="notes" rows="3" class="cyber-input w-full resize-none"
+                          placeholder="Limitations, blade access issues, weather notes…"></textarea>
+              </div>
+            </div>
+
+            <!-- SECTION 5: UPLOAD IMAGES -->
+            <div class="flex items-center gap-3 cursor-pointer select-none mb-4 mt-6"
+                 @click="sections.upload = !sections.upload">
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">UPLOAD IMAGES</span>
+              <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+              <span class="font-mono text-[10px] text-white/25 ml-1" x-text="sections.upload ? '▼' : '▶'"></span>
+            </div>
+            <div x-show="sections.upload" x-transition>
+              <div class="relative border-2 border-dashed rounded-sm transition-colors mt-1"
+                   :class="fileSelected ? 'border-[#00FF88] bg-[#00FF88]/5' : 'border-white/10 bg-white/[0.02]'"
+                   @dragover.prevent
+                   @drop.prevent="handleDrop($event)">
+                <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required
+                       class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                       @change="handleFileChange($event)">
+                <template x-if="!fileSelected">
+                  <div class="drop-zone-inner">
+                    <svg class="drop-zone-svg" width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <rect x="6" y="14" width="28" height="20" rx="1" stroke="rgba(255,255,255,0.5)" stroke-width="1.2" fill="none"/>
+                      <path d="M6 18h28" stroke="rgba(255,255,255,0.2)" stroke-width="0.8"/>
+                      <path d="M14 14v-2a2 2 0 012-2h8a2 2 0 012 2v2" stroke="rgba(255,255,255,0.35)" stroke-width="1.2" fill="none"/>
+                      <path d="M20 22v8M16 26l4-4 4 4" stroke="rgba(0,245,255,0.7)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <div class="drop-zone-title">DROP ZIP OR FOLDER</div>
+                    <div class="drop-zone-hint">DJI P1 · JPEG · ZIP · MAX 500MB</div>
+                  </div>
+                </template>
+                <template x-if="fileSelected">
+                  <div class="flex items-center gap-3 py-5 px-5 pointer-events-none">
+                    <span class="text-[#00FF88] font-mono">✓</span>
+                    <div>
+                      <div class="font-mono text-sm text-[#00FF88]" x-text="fileName"></div>
+                      <div class="font-mono text-[10px] text-white/30 mt-0.5" x-text="fileSize"></div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- SUBMIT -->
+            <button type="submit" class="action-btn mt-6 w-full justify-center"
+                    :disabled="submitting" :style="submitting ? 'opacity:0.45' : ''">
+              <span x-show="!submitting">▶ GENERATE INSPECTION REPORT</span>
+              <span x-show="submitting">UPLOADING…</span>
+            </button>
+
+          </form>
+          </div><!-- /insp-panel -->
+        </div>
+
+        <!-- ── PROGRESS COLUMN (2/5) ─────────────────────────────────────── -->
+        <div class="lg:col-span-2">
+
+          <!-- Empty state -->
+          <template x-if="!jobId">
+            <div class="insp-empty-state mt-2">
+              <div class="font-mono text-[9px] text-white/15 uppercase tracking-[0.3em] mb-3">// PIPELINE IDLE</div>
+              <svg width="48" height="48" viewBox="0 0 28 28" fill="none" class="mx-auto mb-3 opacity-10">
+                <circle cx="14" cy="14" r="2" fill="#00F5FF"/>
+                <path d="M14 2 L14 12 M14 26 L14 16 M2 14 L12 14 M26 14 L16 14" stroke="#00F5FF" stroke-width="1" opacity="0.7"/>
+                <circle cx="14" cy="14" r="12" stroke="#7B2FFF" stroke-width="0.5" stroke-dasharray="2 3" opacity="0.6"/>
+              </svg>
+              <div class="font-mono text-[10px] text-white/20 uppercase tracking-widest">SUBMIT INSPECTION TO BEGIN</div>
+              <div class="font-mono text-[9px] text-white/10 mt-1">TRIAGE → CLASSIFY → ANALYZE → REPORT</div>
+            </div>
+          </template>
+
+          <!-- Active / complete / error job panel -->
+          <template x-if="jobId">
+            <div class="border border-white/[0.06] p-5">
+
+              <!-- Job ID header -->
+              <div class="font-mono text-[10px] text-white/30 uppercase tracking-wider mb-5"
+                   x-text="'JOB ' + jobId?.slice(0,8).toUpperCase()"></div>
+
+              <!-- ── PIPELINE NODES ─────────────────────────────────────────
+                Node 1 TRIAGE:   complete when stageIndex() > 1
+                Node 2 CLASSIFY: active stageIndex()===2||3, complete > 3
+                Node 3 ANALYZE:  active stageIndex()===4,    complete >= 5
+                Conn 1: complete when node1 complete
+                Conn 2: half when node2 active, complete when node2 complete
+              ──────────────────────────────────────────────────────────── -->
+              <div class="pipeline-track">
+
+                <!-- NODE 1 — TRIAGE -->
+                <div class="pipeline-node-wrap">
+                  <div class="pipeline-node"
+                       :data-state="stageIndex() > 1 ? 'complete' : stageIndex() === 1 ? 'active' : 'pending'">
+                    <div class="ring-outer"></div>
+                    <div class="ring-inner"></div>
+                    <div class="node-spinner"></div>
+                    <div class="node-core">
+                      <svg class="node-check" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 10l4.5 4.5L16 7" stroke="#050510" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      <div class="node-active-dot"></div>
+                      <span class="node-pending-num">1</span>
+                    </div>
+                  </div>
+                  <div class="pipeline-node-label"
+                       :class="stageIndex() > 1 ? 'state-complete' : stageIndex() === 1 ? 'state-active' : 'state-pending'">
+                    <span class="lbl-stage">STAGE 01</span>
+                    <span class="lbl-name">TRIAGE</span>
+                    <span class="lbl-status">
+                      <template x-if="stageIndex() > 1"><span>DONE</span></template>
+                      <template x-if="stageIndex() === 1"><span x-text="(message || 'running').slice(0,14)"></span></template>
+                      <template x-if="stageIndex() < 1"><span>QUEUED</span></template>
+                      <span class="cursor-blink" x-show="stageIndex() === 1"></span>
+                    </span>
+                  </div>
+                </div>
+
+                <!-- CONNECTOR 1 -->
+                <div class="pipeline-connector"
+                     :data-state="stageIndex() > 1 ? 'complete' : 'pending'">
+                  <div class="conn-fill"></div>
+                  <div class="conn-dot"></div>
+                </div>
+
+                <!-- NODE 2 — CLASSIFY -->
+                <div class="pipeline-node-wrap">
+                  <div class="pipeline-node"
+                       :data-state="stageIndex() > 3 ? 'complete' : (stageIndex() === 2 || stageIndex() === 3) ? 'active' : 'pending'">
+                    <div class="ring-outer"></div>
+                    <div class="ring-inner"></div>
+                    <div class="node-spinner"></div>
+                    <div class="node-core">
+                      <svg class="node-check" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 10l4.5 4.5L16 7" stroke="#050510" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      <div class="node-active-dot"></div>
+                      <span class="node-pending-num">2</span>
+                    </div>
+                  </div>
+                  <div class="pipeline-node-label"
+                       :class="stageIndex() > 3 ? 'state-complete' : (stageIndex() === 2 || stageIndex() === 3) ? 'state-active' : 'state-pending'">
+                    <span class="lbl-stage">STAGE 02</span>
+                    <span class="lbl-name">CLASSIFY</span>
+                    <span class="lbl-status">
+                      <template x-if="stageIndex() > 3"><span>DONE</span></template>
+                      <template x-if="stageIndex() === 2 || stageIndex() === 3"><span x-text="(message || 'running').slice(0,14)"></span></template>
+                      <template x-if="stageIndex() < 2"><span>QUEUED</span></template>
+                      <span class="cursor-blink" x-show="stageIndex() === 2 || stageIndex() === 3"></span>
+                    </span>
+                  </div>
+                </div>
+
+                <!-- CONNECTOR 2 -->
+                <div class="pipeline-connector"
+                     :data-state="stageIndex() > 3 ? 'complete' : (stageIndex() === 2 || stageIndex() === 3) ? 'half' : 'pending'">
+                  <div class="conn-fill"></div>
+                  <div class="conn-dot"></div>
+                </div>
+
+                <!-- NODE 3 — ANALYZE -->
+                <div class="pipeline-node-wrap">
+                  <div class="pipeline-node"
+                       :data-state="stageIndex() >= 5 ? 'complete' : stageIndex() === 4 ? 'active' : 'pending'">
+                    <div class="ring-outer"></div>
+                    <div class="ring-inner"></div>
+                    <div class="node-spinner"></div>
+                    <div class="node-core">
+                      <svg class="node-check" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 10l4.5 4.5L16 7" stroke="#050510" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      <div class="node-active-dot"></div>
+                      <span class="node-pending-num">3</span>
+                    </div>
+                  </div>
+                  <div class="pipeline-node-label"
+                       :class="stageIndex() >= 5 ? 'state-complete' : stageIndex() === 4 ? 'state-active' : 'state-pending'">
+                    <span class="lbl-stage">STAGE 03</span>
+                    <span class="lbl-name">ANALYZE</span>
+                    <span class="lbl-status">
+                      <template x-if="stageIndex() >= 5"><span>DONE</span></template>
+                      <template x-if="stageIndex() === 4"><span x-text="(message || 'running').slice(0,14)"></span></template>
+                      <template x-if="stageIndex() < 4"><span>QUEUED</span></template>
+                      <span class="cursor-blink" x-show="stageIndex() === 4"></span>
+                    </span>
+                  </div>
+                </div>
+
+              </div>
+              <!-- /pipeline-track -->
+
+              <!-- Progress bar -->
+              <div class="pipeline-progress-row">
+                <span class="pipeline-progress-label"
+                      x-text="'STAGE ' + Math.max(1, Math.min(stageIndex() + 1, 6)) + ' OF 6'"></span>
+                <div class="pipeline-progress-track">
+                  <div class="pipeline-progress-fill" :style="'width:' + progress + '%'"></div>
+                </div>
+                <span class="pipeline-progress-pct" x-text="progress + '%'"></span>
+              </div>
+
+              <!-- Readout grid -->
+              <div class="pipeline-readout">
+                <div class="pipeline-readout-cell">
+                  <span class="rc-key">JOB</span>
+                  <span class="rc-val cyan" x-text="jobId ? jobId.slice(0,8).toUpperCase() : '—'"></span>
+                </div>
+                <div class="pipeline-readout-cell">
+                  <span class="rc-key">STAGE</span>
+                  <span class="rc-val" x-text="stage ? stage.replace(/_/g,' ').toUpperCase() : '—'"></span>
+                </div>
+                <div class="pipeline-readout-cell">
+                  <span class="rc-key">IMAGES</span>
+                  <span class="rc-val" :class="totalImages ? 'cyan' : ''" x-text="totalImages || '—'"></span>
+                </div>
+                <div class="pipeline-readout-cell">
+                  <span class="rc-key">FLAGGED</span>
+                  <span class="rc-val" :class="flaggedImages ? 'amber' : ''" x-text="flaggedImages || '—'"></span>
+                </div>
+              </div>
+
+              <!-- COMPLETE state -->
+              <div x-show="stage === 'complete'" class="space-y-3 mt-4">
+                <div class="font-mono text-xs text-[#00FF88] tracking-widest uppercase pulse text-center py-2 border border-[#00FF88]/30 bg-[#00FF88]/[0.06]">
+                  INSPECTION COMPLETE
+                </div>
+                <button class="action-btn w-full justify-center" @click="downloadReport(jobId)">
+                  DOWNLOAD REPORT PDF
+                </button>
+                <label class="flex items-center gap-2 font-mono text-[10px] text-white/35 cursor-pointer">
+                  <input type="checkbox" x-model="autoRedirect" class="accent-[#00F5FF]">
+                  AUTO-REDIRECT TO HISTORY
+                </label>
+                <div x-show="autoRedirect && countdown > 0"
+                     class="font-mono text-[10px] text-white/25 text-center"
+                     x-text="'Redirecting in ' + countdown + 's…'"></div>
+              </div>
+
+              <!-- ERROR state -->
+              <div x-show="stage === 'error'" class="mt-4">
+                <div class="font-mono text-xs text-[#FF006E] border border-[#FF006E]/30 bg-[#FF006E]/[0.06] px-3 py-2"
+                     x-text="pipelineError || 'Pipeline error. Check server logs.'"></div>
+              </div>
+
+            </div>
+          </template>
+
+        </div>
+      </div>
+
+      <!-- ── BLADE DEFECT MAP (appears below form+progress after complete) ── -->
+      <template x-if="stage === 'complete' && bladeMapReady">
+        <div class="mt-8">
+
+          <!-- Section label -->
+          <div class="flex items-center gap-3 mb-5">
+            <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+            <span class="font-mono text-[10px] text-[#00F5FF]/60 uppercase tracking-widest">BLADE DEFECT MAP</span>
+            <div class="h-px flex-1 bg-[#00F5FF]/15"></div>
+          </div>
+
+          <!-- Blade selector tabs (if multiple blades) -->
+          <template x-if="bladeMapBlades.length > 1">
+            <div class="flex gap-1 mb-4">
+              <template x-for="b in bladeMapBlades" :key="b">
+                <button class="font-mono text-[10px] uppercase tracking-widest px-3 py-1.5 border transition-colors"
+                        :class="selectedBlade === b
+                          ? 'border-[#00F5FF] text-[#00F5FF] bg-[#00F5FF]/[0.08]'
+                          : 'border-white/10 text-white/35 hover:text-white/60'"
+                        @click="selectedBlade = b"
+                        x-text="'BLADE ' + b"></button>
+              </template>
+            </div>
+          </template>
+
+          <!-- Grid for selected blade -->
+          <template x-if="bladeMapData[selectedBlade]">
+            <div>
+
+              <!-- Blade header row -->
+              <div class="flex items-baseline justify-between mb-3">
+                <div>
+                  <span class="font-bebas text-2xl bg-gradient-to-r from-[#00F5FF] to-[#7B2FFF] bg-clip-text text-transparent"
+                        x-text="'BLADE ' + selectedBlade + ' — ' + bladeMapTurbineId"></span>
+                  <span class="font-mono text-[10px] text-white/35 ml-3 uppercase tracking-wider"
+                        x-text="'12 sectors · ' + (bladeMapData[selectedBlade].total_defects || 0) + ' defects'"></span>
+                </div>
+                <div x-show="bladeMapData[selectedBlade].max_category >= 3">
+                  <span class="font-mono text-[10px] text-[#FF006E] border border-[#FF006E]/30 bg-[#FF006E]/8 px-2 py-1 uppercase tracking-wider"
+                        x-text="'⚠ MAX CAT ' + bladeMapData[selectedBlade].max_category"></span>
+                </div>
+              </div>
+
+              <!-- Chordwise column headers -->
+              <div class="grid gap-1 mb-1" style="grid-template-columns: 70px repeat(4, 1fr);">
+                <div></div>
+                <template x-for="col in bmColumns" :key="col.code">
+                  <div class="text-center">
+                    <div class="font-mono text-[8px] text-white/25 uppercase tracking-wider" x-text="col.code"></div>
+                    <div class="font-mono text-[9px] text-white/50 uppercase tracking-wide" x-text="col.label"></div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- Grid rows -->
+              <template x-for="row in bmRows" :key="row.key">
+                <div class="grid gap-1 mb-1" style="grid-template-columns: 70px repeat(4, 1fr);">
+
+                  <!-- Spanwise row label -->
+                  <div class="flex flex-col justify-center border-r border-white/[0.06] pr-2">
+                    <div class="font-mono text-[8px] text-white/25 uppercase" x-text="row.code"></div>
+                    <div class="font-mono text-[10px] text-white/60 uppercase tracking-wide" x-text="row.label"></div>
+                    <div class="font-mono text-[8px] text-white/20 mt-0.5" x-text="row.range"></div>
+                  </div>
+
+                  <!-- 4 zone cells per row -->
+                  <template x-for="col in bmColumns" :key="col.zone">
+                    <div x-data="{ cell: bmGetCell(col.zone, row.pos) }"
+                         class="bm-cell"
+                         :data-cat="cell.worst_cat">
+                      <div class="bm-corners">
+                        <span class="tl"></span><span class="tr"></span>
+                        <span class="bl"></span><span class="br"></span>
+                      </div>
+
+                      <!-- Zone code + cat pill -->
+                      <div class="flex items-center justify-between z-10 relative">
+                        <span class="font-mono text-[8px] text-white/60 uppercase"
+                              x-text="col.zone + '/' + row.pos.slice(0,3).toUpperCase()"></span>
+                        <span class="font-mono text-[7px] px-1 font-semibold uppercase"
+                              :style="bmCatPillStyle(cell.worst_cat)"
+                              x-text="'C' + cell.worst_cat"
+                              x-show="cell.count > 0"></span>
+                      </div>
+
+                      <!-- Defect count marker -->
+                      <div class="flex items-center justify-center flex-1 py-1">
+                        <div class="bm-marker"
+                             :class="cell.count === 0 ? 'empty' : (cell.worst_cat >= 4 ? 'cat4' : cell.worst_cat === 3 ? 'cat3' : cell.worst_cat >= 1 ? 'cat12' : 'cat0')"
+                             x-text="cell.count"></div>
+                      </div>
+
+                      <!-- Footer: primary defect type -->
+                      <div class="font-mono text-[7px] text-white/30 uppercase truncate z-10 relative"
+                           x-text="cell.defect_types[0] || 'NOMINAL'"></div>
+                    </div>
+                  </template>
+
+                </div>
+              </template>
+
+              <!-- Legend -->
+              <div class="flex items-center gap-3 mt-4 border border-white/[0.06] px-4 py-3 bg-white/[0.015]">
+                <span class="font-mono text-[9px] text-[#00F5FF]/60 uppercase tracking-widest mr-2">SEVERITY</span>
+                <template x-for="leg in bmLegend" :key="leg.cat">
+                  <div class="flex items-center gap-1.5">
+                    <div class="w-3 h-3 rounded-[1px] flex-shrink-0"
+                         :style="'background:' + leg.color + '; box-shadow: 0 0 8px -2px ' + leg.color"></div>
+                    <span class="font-mono text-[8px] uppercase tracking-wide"
+                          :style="'color:' + leg.color"
+                          x-text="leg.label"></span>
+                  </div>
+                </template>
+              </div>
+
+            </div>
+          </template>
+
+        </div>
+      </template>
+
     </div>
 
-    <!-- Pipeline info -->
-    <div class="panel-section">
-      <div class="panel-title">AI Pipeline</div>
-      <div class="pipeline-info">
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-1">1</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Triage</div>
-            <div class="pipeline-step-model">Kimi K2.5</div>
-            <div class="pipeline-step-desc">Binary YES/NO defect screening — all images (~$0.50/turbine)</div>
-          </div>
-        </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-2">2</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Classification</div>
-            <div class="pipeline-step-model">Gemini 2.5 Pro</div>
-            <div class="pipeline-step-desc">Defect type + Vestas Cat 1–5 severity — flagged images (~$3/turbine)</div>
-          </div>
-        </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-3">3</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Deep Analysis</div>
-            <div class="pipeline-step-model">Claude Opus 4.6</div>
-            <div class="pipeline-step-desc">Root cause + Vestas SMP — Cat 4–5 only (~$8/turbine)</div>
-          </div>
-        </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-4">4</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">PDF Report</div>
-            <div class="pipeline-step-model">WeasyPrint</div>
-            <div class="pipeline-step-desc">Professional Vestas-format PDF with findings + action matrix</div>
-          </div>
-        </div>
+    <!-- HISTORY TAB -->
+    <div x-show="activeTab==='history'">
+
+      <!-- Header row -->
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="font-mono text-xs uppercase tracking-widest text-white/40">RECENT INSPECTIONS // LAST 30 DAYS</h2>
+        <button @click="loadHistory()" class="font-mono text-[10px] text-white/30 hover:text-white/60 uppercase tracking-wider transition-colors">
+          ↺ REFRESH
+        </button>
       </div>
+
+      <!-- Loading state -->
+      <template x-if="!historyLoaded">
+        <div class="border border-white/[0.06] py-16 text-center">
+          <div class="font-mono text-[10px] text-white/20 uppercase tracking-widest pulse">LOADING…</div>
+        </div>
+      </template>
+
+      <!-- Empty state -->
+      <template x-if="jobs.length === 0 && historyLoaded">
+        <div class="border border-white/[0.06] py-16 text-center">
+          <div class="font-mono text-[10px] text-white/20 uppercase tracking-widest">NO REPORTS GENERATED YET</div>
+        </div>
+      </template>
+
+      <!-- Cards -->
+      <template x-if="jobs.length > 0">
+        <div>
+
+          <!-- Column headers -->
+          <div class="hist-header-row">
+            <span></span>
+            <span>Job / Status</span>
+            <span>Site</span>
+            <span>BDDA / IEC</span>
+            <span>Defects</span>
+            <span>Actions</span>
+          </div>
+
+          <!-- Card list -->
+          <div class="space-y-2">
+            <template x-for="job in jobs" :key="job.job_id">
+              <div class="hist-card"
+                   :data-status="job.stage === 'complete' ? 'complete' : (job.stage === 'error' || job.stage === 'failed') ? 'failed' : 'processing'">
+
+                <!-- Corner ticks -->
+                <div class="hist-card-corners">
+                  <span class="tl"></span><span class="tr"></span>
+                  <span class="bl"></span><span class="br"></span>
+                </div>
+
+                <!-- Col 1: bar placeholder -->
+                <div class="hc-bar"></div>
+
+                <!-- Col 2: Job ID + date + status pill -->
+                <div class="hc-job">
+                  <div class="font-mono text-[13px] text-[#00F5FF] font-medium uppercase leading-none mb-1"
+                       x-text="(job.turbine_id || job.job_id.slice(0,8)).toUpperCase()"></div>
+                  <div class="font-mono text-[10px] text-white/35 mb-2"
+                       x-text="formatDate(job.created_at)"></div>
+                  <span class="hist-status-pill"
+                        x-text="job.stage === 'complete' ? 'COMPLETE' : (job.stage === 'error' || job.stage === 'failed') ? 'FAILED' : 'PROCESSING'"
+                        :class="job.stage !== 'complete' && job.stage !== 'error' && job.stage !== 'failed' ? 'pulse' : ''">
+                  </span>
+                </div>
+
+                <!-- Col 3: Site + meta + GPS -->
+                <div class="hc-site">
+                  <div class="font-syne font-bold text-[16px] text-white leading-tight truncate mb-0.5"
+                       x-text="job.site_name || '—'"></div>
+                  <div class="font-mono text-[10px] text-white/40 mb-0.5">
+                    <span x-text="(job.total_images || '?') + ' images'"></span>
+                    <span class="mx-1 text-white/20">·</span>
+                    <span>3 blades</span>
+                    <span class="mx-1 text-white/20">·</span>
+                    <span x-text="job.rotor_diameter_m ? (parseFloat(job.rotor_diameter_m) * 0.5 * Math.PI).toFixed(1) + 'M span' : '—'"></span>
+                  </div>
+                  <div class="font-mono text-[10px] text-white/25"
+                       x-text="(job.gps_lat && job.gps_lon) ? job.gps_lat + ' · ' + job.gps_lon : ''"></div>
+                </div>
+
+                <!-- Col 4: BDDA score + IEC CAT -->
+                <div class="hc-scores">
+                  <template x-if="job.bdda_score != null">
+                    <div>
+                      <div class="hist-score-box mb-1">
+                        <span class="hist-score-num"
+                              :class="job.bdda_score >= 7 ? 'score-high' : job.bdda_score >= 4 ? 'score-mid' : 'score-low'"
+                              x-text="job.bdda_score"></span>
+                        <span class="font-mono text-[10px] text-white/30">/10</span>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="job.bdda_score == null">
+                    <div class="font-mono text-[18px] text-white/20 mb-1">—</div>
+                  </template>
+                  <template x-if="job.max_iec_category != null">
+                    <div>
+                      <span class="hist-iec-pill"
+                            :class="'cat-' + job.max_iec_category"
+                            x-text="'IEC CAT ' + job.max_iec_category"></span>
+                    </div>
+                  </template>
+                  <template x-if="job.max_iec_category == null">
+                    <div>
+                      <span class="hist-iec-pill cat-na">IEC —</span>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- Col 5: Defect count + critical flag -->
+                <div class="hc-defects">
+                  <template x-if="job.stage === 'complete' && job.defect_count != null">
+                    <div>
+                      <div class="flex items-center gap-1.5 mb-1">
+                        <svg width="13" height="12" viewBox="0 0 13 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M6.5 1L12.1 11H0.9L6.5 1Z" stroke="rgba(255,255,255,0.4)" stroke-width="1" fill="none"/>
+                        </svg>
+                        <span class="font-mono text-sm text-white/70" x-text="job.defect_count"></span>
+                      </div>
+                      <template x-if="job.critical_findings && job.critical_findings > 0">
+                        <div class="font-mono text-[10px] text-[#FF006E] uppercase tracking-wide">
+                          &#9888; CRITICAL
+                        </div>
+                      </template>
+                      <template x-if="!job.critical_findings || job.critical_findings === 0">
+                        <div class="font-mono text-[10px] text-[#00FF88] uppercase tracking-wide">
+                          &#10003; NOMINAL
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="job.stage !== 'complete' || job.defect_count == null">
+                    <span class="font-mono text-[14px] text-white/20">—</span>
+                  </template>
+                </div>
+
+                <!-- Col 6: Actions -->
+                <div class="hc-actions flex flex-col items-start">
+                  <template x-if="job.stage === 'complete'">
+                    <button class="hist-btn-dl" @click="downloadReport(job.job_id)">DOWNLOAD PDF</button>
+                  </template>
+                  <template x-if="job.stage !== 'complete'">
+                    <span class="font-mono text-[10px] text-white/20 mb-1">—</span>
+                  </template>
+                  <button class="hist-btn-del" @click="deleteJob(job.job_id)">DEL</button>
+                </div>
+
+              </div>
+            </template>
+          </div>
+
+        </div>
+      </template>
+
     </div>
 
-    <!-- Recent jobs -->
-    <div class="panel-section">
-      <div class="panel-title">Recent Reports</div>
-      <div id="jobHistory" class="job-history">
-        <div class="history-empty">No reports generated yet.</div>
-      </div>
-    </div>
+  </main>
 
-  </div>
-</main>
+  <!-- ── ALPINE APP() ─────────────────────────────────────────────────── -->
+  <script>
+    function app() {
+      return {
+        // ── Auth ──
+        token: localStorage.getItem('bdda_token') || null,
+        username: localStorage.getItem('bdda_username') || '',
 
-<script src="app.js"></script>
+        // ── Tab navigation ──
+        activeTab: 'new-inspection',
+
+        // ── Form sections collapse state ──
+        sections: {
+          identity:    true,
+          details:     true,
+          environment: true,
+          notes:       true,
+          upload:      true,
+        },
+
+        // ── File upload state ──
+        fileSelected: false,
+        fileName: '',
+        fileSize: '',
+
+        // ── Pipeline / job state ──
+        jobId: null,
+        stage: null,
+        progress: 0,
+        message: '',
+        totalImages: null,
+        flaggedImages: null,
+        criticalFindings: null,
+        isPolling: false,
+        downloadAvailable: false,
+        autoRedirect: false,
+        countdown: 3,
+        pipelineError: null,
+        submitting: false,
+        _pollTimer: null,
+
+        // ── Stage definitions ──
+        stages: [
+          { key: 'ingesting',         label: 'INGEST IMAGES' },
+          { key: 'triaging',          label: 'TRIAGE \u2014 claude-opus-4-6' },
+          { key: 'classifying',       label: 'CLASSIFY \u2014 claude-opus-4-6' },
+          { key: 'analyzing',         label: 'ANALYZE \u2014 claude-opus-4-6' },
+          { key: 'generating_report', label: 'BUILD PDF' },
+          { key: 'complete',          label: 'COMPLETE' },
+        ],
+        STAGE_ORDER: ['ingesting','triaging','classifying','analyzing','generating_report','complete'],
+
+        // ── History ──
+        jobs: [],
+        historyLoaded: false,
+
+        // ── Blade map ──
+        bladeMapReady: false,
+        bladeMapData: {},
+        bladeMapBlades: [],
+        bladeMapTurbineId: '',
+        selectedBlade: '1',
+
+        bmColumns: [
+          { zone: 'LE', code: 'C01', label: 'LEADING EDGE' },
+          { zone: 'PS', code: 'C02', label: 'PRESSURE SIDE' },
+          { zone: 'SS', code: 'C03', label: 'SUCTION SIDE' },
+          { zone: 'TE', code: 'C04', label: 'TRAILING EDGE' },
+        ],
+        bmRows: [
+          { pos: 'Root', key: 'root', code: 'R01', label: 'ROOT',     range: '0 – 30%' },
+          { pos: 'Mid',  key: 'mid',  code: 'R02', label: 'MID-SPAN', range: '30 – 70%' },
+          { pos: 'Tip',  key: 'tip',  code: 'R03', label: 'TIP',      range: '70 – 100%' },
+        ],
+        bmLegend: [
+          { cat: 0, color: '#00FF88', label: 'CAT 0 · NOMINAL' },
+          { cat: 1, color: '#FFB800', label: 'CAT 1–2 · MINOR' },
+          { cat: 3, color: '#FF006E', label: 'CAT 3 · MAJOR' },
+          { cat: 4, color: '#FF3333', label: 'CAT 4 · CRITICAL' },
+        ],
+
+        // ── Init ──
+        async init() {
+          this.$nextTick(() => {
+            const dateInput = document.querySelector('input[name="inspection_date"]');
+            if (dateInput && !dateInput.value) {
+              dateInput.value = new Date().toISOString().split('T')[0];
+            }
+          });
+        },
+
+        // ── API wrapper (no auth — bypassed for development) ──
+        async apiFetch(path, opts = {}) {
+          const res = await fetch(path, { ...opts });
+          return res;
+        },
+
+        // ── Stage helpers ──
+        stageIndex() { return this.STAGE_ORDER.indexOf(this.stage); },
+        isDone(i)    { return this.stageIndex() > i && this.stage !== 'error'; },
+        isActive(i)  { return this.stageIndex() === i && this.stage !== 'error'; },
+        isFailed(i)  { return this.stage === 'error' && this.stageIndex() === i; },
+        isPending(i) { return this.stageIndex() < i; },
+
+        // ── Date formatter ──
+        formatDate(iso) {
+          if (!iso) return '\u2014';
+          const d = new Date(iso);
+          const mon = d.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase();
+          const day = String(d.getDate()).padStart(2, '0');
+          const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          return `${mon} ${day} \u00b7 ${time}`;
+        },
+
+        // ── File handling ──
+        handleFileChange(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          this.fileSelected = true;
+          this.fileName = file.name;
+          this.fileSize = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+        },
+
+        handleDrop(e) {
+          const file = e.dataTransfer.files[0];
+          if (!file) return;
+          const input = document.getElementById('fileInput');
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
+          this.fileSelected = true;
+          this.fileName = file.name;
+          this.fileSize = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+        },
+
+        // ── Submit ──
+        async submit() {
+          const fileInput = document.getElementById('fileInput');
+          if (!fileInput.files.length) return;
+
+          this.submitting = true;
+          this.jobId = null;
+          this.stage = null;
+          this.progress = 0;
+          this.message = '';
+          this.pipelineError = null;
+          this.downloadAvailable = false;
+
+          const formData = new FormData(document.querySelector('form'));
+          if (!formData.get('inspection_date')) {
+            formData.set('inspection_date', new Date().toISOString().split('T')[0]);
+          }
+
+          try {
+            const res = await this.apiFetch('/api/upload', { method: 'POST', body: formData });
+            if (!res || !res.ok) {
+              const err = await res?.json().catch(() => ({ detail: 'Upload failed' }));
+              throw new Error(err.detail || 'Upload failed');
+            }
+            const data = await res.json();
+            this.jobId = data.job_id;
+            this.totalImages = data.image_count || null;
+            this.startPolling(data.job_id);
+          } catch (err) {
+            this.pipelineError = err.message;
+            this.stage = 'error';
+          } finally {
+            this.submitting = false;
+          }
+        },
+
+        // ── Polling ──
+        startPolling(jobId) {
+          this.stopPolling();
+          this.isPolling = true;
+          this._pollTimer = setInterval(() => this.pollOnce(jobId), 2000);
+          this.pollOnce(jobId);
+        },
+
+        stopPolling() {
+          if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+          this.isPolling = false;
+        },
+
+        async pollOnce(jobId) {
+          try {
+            const res = await this.apiFetch(`/api/status/${jobId}`);
+            if (!res || !res.ok) return;
+            const s = await res.json();
+            this.stage = s.stage;
+            this.progress = s.progress >= 0 ? s.progress : 0;
+            this.message = s.message || '';
+            this.totalImages = s.total_images || this.totalImages;
+            this.flaggedImages = s.flagged_images || null;
+            this.criticalFindings = s.critical_findings || null;
+
+            if (s.stage === 'complete') {
+              this.stopPolling();
+              this.downloadAvailable = true;
+              this.progress = 100;
+              this.loadHistory();
+              this.loadBladeMap(jobId);
+              if (this.autoRedirect) {
+                this.countdown = 3;
+                const tick = setInterval(() => {
+                  this.countdown--;
+                  if (this.countdown <= 0) {
+                    clearInterval(tick);
+                    this.activeTab = 'history';
+                  }
+                }, 1000);
+              }
+            }
+            if (s.stage === 'error' || s.stage === 'failed' || s.stage === 'cost_limit_exceeded') {
+              this.stage = 'error';
+              this.pipelineError = s.error || s.message || 'Pipeline failed.';
+              this.stopPolling();
+            }
+          } catch {
+            // Network error — keep polling
+          }
+        },
+
+        // ── Download (blob fetch — JWT-safe) ──
+        async downloadReport(jobId) {
+          const res = await this.apiFetch(`/api/download/${jobId}`);
+          if (!res || !res.ok) return;
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `inspection_${jobId}.pdf`;
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+
+        // ── History ──
+        async loadHistory() {
+          try {
+            const res = await this.apiFetch('/api/jobs');
+            if (!res || !res.ok) return;
+            this.jobs = await res.json();
+            this.historyLoaded = true;
+          } catch {
+            this.historyLoaded = true;
+          }
+        },
+
+        // ── Delete job ──
+        async deleteJob(jobId) {
+          if (!confirm('Delete this inspection record?')) return;
+          try {
+            const res = await this.apiFetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+            if (res && res.ok) {
+              this.jobs = this.jobs.filter(j => j.job_id !== jobId);
+            }
+          } catch {}
+        },
+
+        // ── Blade map ──
+        async loadBladeMap(jobId) {
+          try {
+            const res = await this.apiFetch(`/api/blademap/${jobId}`);
+            if (!res || !res.ok) return;
+            const data = await res.json();
+            if (!data.ready) return;
+            this.bladeMapData    = data.blades || {};
+            this.bladeMapBlades  = Object.keys(data.blades || {}).sort();
+            this.bladeMapTurbineId = data.turbine_id || '';
+            this.selectedBlade   = this.bladeMapBlades[0] || '1';
+            this.bladeMapReady   = true;
+          } catch {}
+        },
+
+        bmGetCell(zone, pos) {
+          const blade = this.bladeMapData[this.selectedBlade];
+          if (!blade) return { count: 0, worst_cat: 0, defect_types: [] };
+          return blade.grid[`${zone}/${pos}`] || { count: 0, worst_cat: 0, defect_types: [] };
+        },
+
+        bmCatPillStyle(cat) {
+          const colors = { 0: '#00FF88', 1: '#FFB800', 2: '#FFB800', 3: '#FF006E', 4: '#FF3333' };
+          const c = colors[cat] || '#fff';
+          return `background: ${c}; color: #050510; border-radius: 1px;`;
+        },
+      }
+    }
+  </script>
+
 </body>
 </html>
