@@ -101,7 +101,7 @@ def call_claude_triage(
     inspection_date: str,
     location_type: str,  # "onshore" or "offshore"
     api_key: str,
-    model: str = "claude-opus-4-6",
+    model: str = "claude-opus-4-5",
     max_retries: int = 3,
 ) -> Dict:
     """

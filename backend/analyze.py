@@ -15,6 +15,12 @@ from dataclasses import dataclass, field
 
 import google.generativeai as genai
 
+# ─── MODEL NOTE ───────────────────────────────────────────────────────────────
+# TARGET: Claude claude-opus-4-5 (Anthropic) for deep analysis — best reasoning
+# CURRENT: gemini-2.5-pro (interim — Anthropic SDK migration pending)
+# FALLBACK: deepseek-v3 via OpenAI-compatible API
+# ──────────────────────────────────────────────────────────────────────────────
+
 # ─── ANALYSIS PROMPT ─────────────────────────────────────────────────────────
 
 ANALYZE_SYSTEM_PROMPT = """You are a senior structural engineer with 25 years specializing in wind turbine blade failure analysis.
