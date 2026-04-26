@@ -203,20 +203,18 @@ body {
 /* ─── FIELDSET ───────────────────────────────────────────────────────────── */
 .fs {
   padding: var(--s5) var(--s5) var(--s4);
-  border: 0;
-  border-bottom: none;
+  border: none;
+  outline: none;
 }
-
-.fs:last-of-type { border-bottom: 0; }
 
 .fs-optional { background: var(--bg-2); }
 
-/* Warm section accents — left bar only, no horizontal lines */
-.fs-coffee { background: var(--warm-coffee); border-left: 4px solid var(--warm-coffee-line); }
-.fs-navy   { background: var(--warm-navy);   border-left: 4px solid var(--warm-navy-line); }
-.fs-sand   { background: var(--warm-sand);   border-left: 4px solid var(--warm-sand-line); }
-.fs-taupe  { background: var(--warm-taupe);  border-left: 4px solid var(--warm-taupe-line); }
-.fs-amber  { background: var(--warm-amber);  border-left: 4px solid var(--warm-amber-line); }
+/* Warm section accents — background only, zero borders */
+.fs-coffee { background: var(--warm-coffee); }
+.fs-navy   { background: var(--warm-navy); }
+.fs-sand   { background: var(--warm-sand); }
+.fs-taupe  { background: var(--warm-taupe); }
+.fs-amber  { background: var(--warm-amber); }
 
 /* Override legend color for warm sections */
 .fs-coffee .fs-legend { color: #8B6914; }
