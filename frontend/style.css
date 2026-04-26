@@ -179,7 +179,8 @@ body {
 .col-header {
   padding: var(--s5) var(--s5) var(--s4);
   border-bottom: none;
-  background: #EDE8DE;   /* warm linen header */
+  background: var(--warm-coffee);  /* matches first fieldset — no gap */
+  box-shadow: inset 4px 0 0 var(--warm-coffee-line);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
 }
 
@@ -202,34 +203,38 @@ body {
 
 /* ─── FIELDSET ───────────────────────────────────────────────────────────── */
 .fs {
-  padding: var(--s5) var(--s5) var(--s4);
+  padding: var(--s4) var(--s5);
   border: none;
   outline: none;
+  /* inset left bar via box-shadow — no gap artifacts */
+  box-shadow: inset 4px 0 0 transparent;
+  margin: 0;
 }
 
 .fs-optional { background: var(--bg-2); }
 
-/* Warm section accents — background only, zero borders */
-.fs-coffee { background: var(--warm-coffee); }
-.fs-navy   { background: var(--warm-navy); }
-.fs-sand   { background: var(--warm-sand); }
-.fs-taupe  { background: var(--warm-taupe); }
-.fs-amber  { background: var(--warm-amber); }
+/* Warm section accents — bg + inset left bar, zero external borders */
+.fs-coffee { background: var(--warm-coffee); box-shadow: inset 4px 0 0 var(--warm-coffee-line); }
+.fs-navy   { background: var(--warm-navy);   box-shadow: inset 4px 0 0 var(--warm-navy-line); }
+.fs-sand   { background: var(--warm-sand);   box-shadow: inset 4px 0 0 var(--warm-sand-line); }
+.fs-taupe  { background: var(--warm-taupe);  box-shadow: inset 4px 0 0 var(--warm-taupe-line); }
+.fs-amber  { background: var(--warm-amber);  box-shadow: inset 4px 0 0 var(--warm-amber-line); }
 
-/* Override legend color for warm sections */
-.fs-coffee .fs-legend { color: #8B6914; }
-.fs-navy   .fs-legend { color: #1E3A5F; }
-.fs-sand   .fs-legend { color: #7A6030; }
-.fs-taupe  .fs-legend { color: #5A5040; }
-.fs-amber  .fs-legend { color: var(--signal-deep); }
+/* Legend — more readable: larger, darker, display font */
+.fs-coffee .fs-legend { color: var(--warm-coffee-line); }
+.fs-navy   .fs-legend { color: var(--warm-navy-line); }
+.fs-sand   .fs-legend { color: var(--warm-sand-line); }
+.fs-taupe  .fs-legend { color: var(--warm-taupe-line); }
+.fs-amber  .fs-legend { color: var(--warm-amber-line); }
 
 .fs-legend {
   display: flex;
   align-items: center;
   gap: var(--s2);
   font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
   color: var(--mid);
   margin-bottom: var(--s3);
