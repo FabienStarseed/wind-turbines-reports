@@ -188,7 +188,7 @@ function updateJobPanel(status) {
   if (stage === 'complete') {
     downloadBtn.href = `${API}/api/download/${currentJobId}`;
     downloadBtn.style.display = 'flex';
-    progressBar.style.background = 'var(--green)';
+    progressBar.style.background = 'var(--moss)';
     stopPolling();
     submitBtn.disabled = false;
     submitBtn.innerHTML = '<span class="btn-icon">▶</span> Generate Inspection Report';
@@ -199,7 +199,7 @@ function updateJobPanel(status) {
   if (stage === 'error') {
     errorBlock.textContent = `Pipeline error: ${message}`;
     errorBlock.style.display = 'block';
-    progressBar.style.background = 'var(--red)';
+    progressBar.style.background = 'var(--rust)';
     stopPolling();
     submitBtn.disabled = false;
     submitBtn.innerHTML = '<span class="btn-icon">▶</span> Generate Inspection Report';
