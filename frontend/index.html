@@ -15,12 +15,41 @@
 <header class="app-header">
   <div class="header-inner">
     <div class="brand">
-      <svg class="brand-logo" width="48" height="28" viewBox="0 0 80 40" fill="none">
-        <path d="M 2,20 Q 3,9 14,7 Q 35,5 55,9 Q 70,12 77,18 L 77,20 L 2,20 Z" fill="#0E0F0C"/>
-        <path d="M 2,20 Q 3,31 14,33 Q 35,35 55,31 Q 70,28 77,22 L 77,20 L 2,20 Z" fill="#2A2B26"/>
-        <line x1="2" y1="20" x2="77" y2="20" stroke="#F2C12E" stroke-width="1" stroke-dasharray="2 1.5"/>
-        <circle cx="40" cy="20" r="1.6" fill="#F2C12E"/>
-        <circle cx="40" cy="20" r="3.5" fill="none" stroke="#F2C12E" stroke-width="0.5"/>
+      <svg class="brand-logo" width="52" height="32" viewBox="0 0 90 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Tower 1 (left) -->
+        <rect x="14" y="34" width="3" height="12" rx="1" fill="#5A5040"/>
+        <!-- Hub 1 -->
+        <circle cx="15.5" cy="34" r="2" fill="#F2C12E"/>
+        <!-- Blades 1 -->
+        <path d="M15.5,34 L8,22 Q7,20 9,20 Q10.5,20 11,21.5 Z" fill="#9A9C92"/>
+        <path d="M15.5,34 L26,27 Q28,26.5 28,28.5 Q27.5,30 26,30 Z" fill="#6B6E66"/>
+        <path d="M15.5,34 L5,40 Q3.5,41.5 4,43 Q5,44.5 6.5,43.5 Z" fill="#9A9C92"/>
+
+        <!-- Tower 2 (center) -->
+        <rect x="42" y="28" width="3.5" height="18" rx="1" fill="#5A5040"/>
+        <!-- Hub 2 -->
+        <circle cx="43.7" cy="28" r="2.4" fill="#F2C12E"/>
+        <!-- Blades 2 -->
+        <path d="M43.7,28 L34,13 Q33,11 35,11 Q36.5,11 37.5,12.5 Z" fill="#8B8E82"/>
+        <path d="M43.7,28 L58,20 Q60,19 60,21.5 Q59.5,23 58,23 Z" fill="#5A5C52"/>
+        <path d="M43.7,28 L30,36 Q28,38 29,40 Q30.5,41.5 32,40 Z" fill="#8B8E82"/>
+
+        <!-- Tower 3 (right) -->
+        <rect x="71" y="32" width="3" height="15" rx="1" fill="#5A5040"/>
+        <!-- Hub 3 -->
+        <circle cx="72.5" cy="32" r="2" fill="#F2C12E"/>
+        <!-- Blades 3 -->
+        <path d="M72.5,32 L64,19 Q63,17 65,17 Q66.5,17 67,18.5 Z" fill="#9A9C92"/>
+        <path d="M72.5,32 L84,25 Q86,24 86,26.5 Q85,28 83.5,28 Z" fill="#6B6E66"/>
+        <path d="M72.5,32 L62,40 Q60.5,41.5 61,43 Q62.5,44.5 64,43 Z" fill="#9A9C92"/>
+
+        <!-- Ground line -->
+        <line x1="0" y1="46" x2="90" y2="46" stroke="#524030" stroke-width="1"/>
+
+        <!-- Drone (small, flying) -->
+        <circle cx="55" cy="10" r="1.2" fill="none" stroke="#F2C12E" stroke-width="0.8"/>
+        <line x1="52" y1="10" x2="58" y2="10" stroke="#F2C12E" stroke-width="0.6"/>
+        <line x1="55" y1="7" x2="55" y2="13" stroke="#F2C12E" stroke-width="0.6"/>
       </svg>
       <div class="brand-text">
         <span class="brand-name">ABRS</span>
