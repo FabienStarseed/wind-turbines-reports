@@ -158,7 +158,7 @@ body {
 
 /* ─── COLUMNS ────────────────────────────────────────────────────────────── */
 .col-form {
-  background: #F7F4EE;   /* warm parchment — form card */
+  background: var(--warm-coffee); /* matches first section — no bleed-through */
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   overflow: hidden;
@@ -167,6 +167,13 @@ body {
 .col-form form {
   display: flex;
   flex-direction: column;
+  gap: 0;
+}
+
+.col-form .fs {
+  display: block;
+  width: 100%;
+  min-inline-size: unset; /* override browser fieldset default */
 }
 
 .col-status {
