@@ -173,7 +173,6 @@ body {
 .col-form .fs {
   display: block;
   width: 100%;
-  min-inline-size: unset; /* override browser fieldset default */
 }
 
 .col-status {

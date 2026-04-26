@@ -76,8 +76,8 @@
     <form id="uploadForm" enctype="multipart/form-data">
 
       <!-- Turbine Identity -->
-      <fieldset class="fs fs-coffee">
-        <legend class="fs-legend">Asset Identity</legend>
+      <div class="fs fs-coffee">
+        <div class="fs-legend">Asset Identity</div>
         <div class="field-row field-row-2">
           <div class="field">
             <label for="f-turbine-id">Turbine ID <span class="req">*</span></label>
@@ -129,11 +129,11 @@
             <input type="text" id="f-lon" name="gps_lon" placeholder="141.6789">
           </div>
         </div>
-      </fieldset>
+      </div>
 
       <!-- Inspection Details -->
-      <fieldset class="fs fs-navy">
-        <legend class="fs-legend">Inspection Details</legend>
+      <div class="fs fs-navy">
+        <div class="fs-legend">Inspection Details</div>
         <div class="field-row field-row-3">
           <div class="field">
             <label for="f-inspector">Inspector Name <span class="req">*</span></label>
@@ -148,11 +148,11 @@
             <input type="text" id="f-drone" name="drone_model" placeholder="DJI Matrice 300 RTK" value="DJI Matrice 300 RTK">
           </div>
         </div>
-      </fieldset>
+      </div>
 
       <!-- Environmental Conditions -->
-      <fieldset class="fs fs-sand fs-optional">
-        <legend class="fs-legend">Environmental Conditions <span class="opt-tag">optional</span></legend>
+      <div class="fs fs-sand fs-optional">
+        <div class="fs-legend">Environmental Conditions <span class="opt-tag">optional</span></div>
         <div class="field-row field-row-4">
           <div class="field">
             <label for="f-weather">Weather</label>
@@ -171,19 +171,19 @@
             <input type="number" id="f-vis" name="visibility_km" placeholder="20">
           </div>
         </div>
-      </fieldset>
+      </div>
 
       <!-- Notes -->
-      <fieldset class="fs fs-taupe fs-optional">
-        <legend class="fs-legend">Inspection Notes <span class="opt-tag">optional</span></legend>
+      <div class="fs fs-taupe fs-optional">
+        <div class="fs-legend">Inspection Notes <span class="opt-tag">optional</span></div>
         <div class="field">
           <textarea name="notes" rows="3" placeholder="Limitations, blade access issues, weather observations…"></textarea>
         </div>
-      </fieldset>
+      </div>
 
       <!-- Upload -->
-      <fieldset class="fs fs-amber">
-        <legend class="fs-legend">Upload Images <span class="req">*</span></legend>
+      <div class="fs fs-amber">
+        <div class="fs-legend">Upload Images <span class="req">*</span></div>
         <div class="drop-zone" id="dropZone">
           <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required aria-label="Select images or ZIP file">
           <div class="drop-zone-content">
@@ -199,7 +199,7 @@
           </div>
         </div>
         <div class="file-preview" id="filePreview" style="display:none;"></div>
-      </fieldset>
+      </div>
 
       <button type="submit" class="submit-btn" id="submitBtn">
         <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
