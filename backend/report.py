@@ -9,11 +9,21 @@ Pipeline:
 import json
 import io
 import math
+import tempfile
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 
 from fpdf import FPDF
+
+# Optional QR code support
+try:
+    import qrcode
+    from qrcode.image.pil import PilImage as QRPilImage
+    HAS_QRCODE = True
+except ImportError:
+    HAS_QRCODE = False
 
 try:
     from PIL import Image as PILImage, ImageEnhance, ImageFilter
@@ -1203,6 +1213,52 @@ def build_report_data(
 
     action_matrix.sort(key=lambda x: x["priority"])
 
+    # ── AEP loss estimate ──
+    rated_kw = turbine_meta.get("rated_power_kw") or 2000
+    aep_loss_pct = 0.0
+    for d in all_defects:
+        cat = d.get("category", d.get("iec_category", 0))
+        dtype = (d.get("defect_name") or "").lower()
+        if "erosion" in dtype:
+            if cat == 3:
+                aep_loss_pct += 0.8
+            elif cat == 4:
+                aep_loss_pct += 1.5
+            elif cat >= 5:
+                aep_loss_pct += 2.5
+        elif "TE" in d.get("zone", "") or "trailing" in dtype:
+            if cat >= 3:
+                aep_loss_pct += 0.3
+    aep_loss_pct = min(aep_loss_pct, 8.0)
+    # Annual energy production at 35% CF
+    aep_mwh = rated_kw * 8760 * 0.35 / 1000  # MWh/year
+    aep_loss_mwh = aep_mwh * aep_loss_pct / 100
+    aep_loss_kstr = f"${aep_loss_mwh * 50 / 1000:.0f}k" if aep_loss_mwh > 0 else "$0"
+    aep_impact = {
+        "loss_pct": round(aep_loss_pct, 1),
+        "loss_display": f"Est. -{aep_loss_pct:.1f}% AEP",
+        "money_display": f"≈ {aep_loss_kstr}/yr at $50/MWh assumed",
+    }
+
+    # ── Rotor imbalance risk ──
+    blade_totals = {b: defects_by_blade[b]["total"] for b in defects_by_blade}
+    if blade_totals:
+        max_b = max(blade_totals.values())
+        min_b = min(blade_totals.values()) if min(blade_totals.values()) > 0 else 1
+        imb_ratio = max_b / min_b
+        if imb_ratio > 2.0 and max_b >= 4:
+            imbalance_risk = "HIGH"
+            imbalance_color = "RED"
+        elif imb_ratio > 1.5:
+            imbalance_risk = "MODERATE"
+            imbalance_color = "AMBER"
+        else:
+            imbalance_risk = "LOW"
+            imbalance_color = "GREEN"
+    else:
+        imbalance_risk = "LOW"
+        imbalance_color = "GREEN"
+
     # ── Triage stats ──
     triage_stats = None
     if triage_data:
@@ -1260,6 +1316,21 @@ def build_report_data(
 
         # Cat range
         "cat_range": [0, 1, 2, 3, 4],
+
+        # Group A computed fields
+        "aep_impact": aep_impact,
+        "imbalance_risk": imbalance_risk,
+        "imbalance_color": imbalance_color,
+
+        # Step 4 new computed fields
+        "aep_loss_pct": round(aep_loss_pct, 2),
+        "aep_loss_kyr": round(aep_mwh * aep_loss_pct / 100 * 50 / 1000, 1),
+        "rotor_balance_risk": imbalance_risk,
+        "rated_power_kw": int(rated_kw),
+
+        # Raw classify data for coverage map
+        "classify_data": classify_data,
+        "triage_data": triage_data,
     }
 
 
@@ -1801,9 +1872,61 @@ def _render_executive_summary(pdf: BDDAReport, report_data: dict):
     pdf.set_text_color(*BRAND_LAVENDER)
     pdf.multi_cell(reco_w - 10, 6, reco_text)
 
+    # ── AEP Impact + Rotor Balance Risk (Group A: items 7 & 8) ──
+    kpi_y = reco_y + card_height + 6
+    aep_impact = report_data.get("aep_impact", {})
+    imbalance_risk = report_data.get("imbalance_risk", "LOW")
+    imbalance_color = report_data.get("imbalance_color", "GREEN")
+    imb_rgb = {"RED": BRAND_RED, "AMBER": BRAND_AMBER, "GREEN": BRAND_PRIMARY}.get(imbalance_color, BRAND_PRIMARY)
+    content_width_kpi = pdf.w - pdf.l_margin - pdf.r_margin
+    kpi_card_w = content_width_kpi / 2 - 3
+
+    # AEP card (left)
+    pdf.set_fill_color(*BRAND_NAVY)
+    pdf.set_draw_color(*BRAND_SLATE)
+    pdf.set_line_width(0.2)
+    pdf.rect(pdf.l_margin, kpi_y, kpi_card_w, 22, style="FD")
+    pdf.set_fill_color(*BRAND_AMBER)
+    pdf.rect(pdf.l_margin, kpi_y, kpi_card_w, 2, style="F")
+    pdf.set_xy(pdf.l_margin + 3, kpi_y + 4)
+    pdf._font("B", 6)
+    pdf.set_text_color(*BRAND_GREY)
+    pdf.cell(kpi_card_w - 6, 4, "ESTIMATED AEP IMPACT", align="L", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(pdf.l_margin + 3)
+    pdf._font("B", 13)
+    pdf.set_text_color(*BRAND_AMBER)
+    pdf.cell(kpi_card_w - 6, 9, aep_impact.get("loss_display", "Est. -0.0% AEP"), align="L", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(pdf.l_margin + 3)
+    pdf._font("", 6)
+    pdf.set_text_color(*BRAND_LAVENDER)
+    pdf.cell(kpi_card_w - 6, 5, aep_impact.get("money_display", ""), align="L")
+
+    # Imbalance card (right)
+    right_kpi_x = pdf.l_margin + kpi_card_w + 6
+    pdf.set_fill_color(*BRAND_NAVY)
+    pdf.set_draw_color(*BRAND_SLATE)
+    pdf.rect(right_kpi_x, kpi_y, kpi_card_w, 22, style="FD")
+    pdf.set_fill_color(*imb_rgb)
+    pdf.rect(right_kpi_x, kpi_y, kpi_card_w, 2, style="F")
+    pdf.set_xy(right_kpi_x + 3, kpi_y + 4)
+    pdf._font("B", 6)
+    pdf.set_text_color(*BRAND_GREY)
+    pdf.cell(kpi_card_w - 6, 4, "ROTOR BALANCE RISK", align="L", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(right_kpi_x + 3)
+    pdf._font("B", 13)
+    pdf.set_text_color(*imb_rgb)
+    pdf.cell(kpi_card_w - 6, 9, imbalance_risk, align="L", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(right_kpi_x + 3)
+    pdf._font("", 6)
+    pdf.set_text_color(*BRAND_LAVENDER)
+    imb_note = "Recommend balance check post-repair" if imbalance_risk in ("HIGH", "MODERATE") else "Rotor loading appears balanced"
+    pdf.cell(kpi_card_w - 6, 5, imb_note, align="L")
+
+    pdf.set_y(kpi_y + 26)
+
     # ── Approach module cards (2-column grid) ──
     # Shows the inspection workflow like the WINDIA 'exercise approach' cards
-    pdf.set_y(reco_y + card_height + 10)
+    pdf.set_y(pdf.get_y() + 4)
     if pdf.get_y() < 200:  # Only if there's space remaining
         pdf._font("B", 9)
         pdf.set_text_color(*BRAND_GREY)
@@ -1896,12 +2019,30 @@ def _render_defect_page(pdf: BDDAReport, defect: dict, defect_index: int, total_
     meta_width = pdf.w - right_x - pdf.r_margin
 
     # Left column: image using _draw_image_frame (dark frame + caption + badge)
+    # Retrieve span/chord for annotation (defined later in meta section but needed here)
+    _ann_span = defect.get("span_pct", 0) or 0
+    _ann_chord = defect.get("chord_pct", 0) or 0
     sev_label = severity_info["label"]
     _draw_image_frame(pdf, defect.get("image_path", ""),
                       left_x, col_start_y, w=82, h=82,
                       caption=defect.get("zone", "") + " / " + defect.get("position", ""),
                       badge=f"Cat {cat}",
                       badge_color=severity_info["rgb"])
+
+    # ── Defect annotation circle (Group A item 1) ──
+    # Map span_pct → x across image width, chord_pct → y across image height
+    if _ann_span and _ann_chord:
+        # Image area: inset 1mm from border, actual display area is 82×82 frame
+        img_area_x = left_x + 1
+        img_area_y = col_start_y + 1
+        img_area_w = 80  # 82 - 2
+        img_area_h = 72  # 82 - 2 - 8 (caption strip)
+        ann_cx = img_area_x + img_area_w * (_ann_span / 100)
+        ann_cy = img_area_y + img_area_h * (_ann_chord / 100)
+        pdf.set_draw_color(248, 81, 73)   # BRAND_RED
+        pdf.set_line_width(1.5 / 2.8346)  # 1.5pt → mm
+        pdf.circle(x=ann_cx, y=ann_cy, radius=3, style="D")
+        pdf.set_line_width(0.2)
 
     # Right column: metadata fields
     def _meta_row(label: str, value: str):
@@ -1929,6 +2070,43 @@ def _render_defect_page(pdf: BDDAReport, defect: dict, defect_index: int, total_
     conf_label = _confidence_label(confidence)
     ndt = "Yes" if defect.get("ndt_recommended") else "No"
 
+    # ── Access method (Group A item 3) ──
+    span_pct = defect.get("span_pct", 0) or 0
+    chord_pct = defect.get("chord_pct", 0) or 0
+    zone_str = (defect.get("zone") or "").lower()
+    if zone_str in ("nacelle", "tower"):
+        access_method = "Ground / crane access"
+    elif span_pct >= 80:
+        access_method = "Rope access (tip zone)"
+    elif span_pct >= 50:
+        access_method = "Rope access or spider platform"
+    elif span_pct >= 20:
+        access_method = "Spider platform or MEWP"
+    else:
+        access_method = "Internal / ground access"
+
+    # ── Cost range (Group A item 4) ──
+    cost_map = {
+        1: "EUR 200-500 (cosmetic)",
+        2: "EUR 500-1,500 (minor repair)",
+        3: "EUR 1,500-4,000 (composite patch / LEP tape)",
+        4: "EUR 4,000-12,000 (LEP shell / structural repair)",
+        5: "EUR 12,000-40,000 (critical structural + downtime)",
+    }
+    est_cost = cost_map.get(cat, cost_map.get(min(cat, 5), "—"))
+
+    # ── Urgency window with regulatory basis (Group A item 5) ──
+    if cat >= 4:
+        urgency_window = "Within 30 days — risk of OEM warranty void (IEC 61400-5 §8.3)"
+    elif cat == 3:
+        urgency_window = "Within 90 days — next scheduled maintenance window"
+    else:
+        urgency_window = "At next annual service — monitor interim"
+
+    # ── Trend field (Group A item 15) ──
+    # TODO: show Cat X -> Cat Y evolution once multi-inspection data is stored
+    trend_text = "First inspection — no trend data available"
+
     meta_fields = [
         ("Defect ID", defect.get("defect_id", "—")),
         ("IEC Category", f"Cat {cat} — {defect.get('urgency', '')}"),
@@ -1937,6 +2115,10 @@ def _render_defect_page(pdf: BDDAReport, defect: dict, defect_index: int, total_
         ("Size Estimate", defect.get("size_estimate", "—")),
         ("Confidence", f"{conf_pct} ({conf_label})"),
         ("NDT Recommended", ndt),
+        ("Access Method", access_method),
+        ("Est. Repair Cost", est_cost),
+        ("Urgency Window", urgency_window[:50]),
+        ("Trend", trend_text),
     ]
 
     for label, value in meta_fields:
@@ -2225,6 +2407,43 @@ def _render_action_matrix(pdf: BDDAReport, report_data: dict):
             pdf.cell(w, row_h, str(val), border="B", fill=True, align="L")
         pdf.ln(row_h)
 
+    # ── Regulatory basis box at bottom of action matrix ──
+    reg_y = pdf.get_y() + 6
+    if reg_y + 32 > 275:
+        # Not enough space — skip rather than overflow
+        pass
+    else:
+        content_width = pdf.w - pdf.l_margin - pdf.r_margin
+        pdf.set_fill_color(*BRAND_NAVY)
+        pdf.set_draw_color(*BRAND_SLATE)
+        pdf.set_line_width(0.2)
+        pdf.rect(pdf.l_margin, reg_y, content_width, 28, style="FD")
+        pdf.set_fill_color(*BRAND_SLATE)
+        pdf.rect(pdf.l_margin, reg_y, 3, 28, style="F")
+        pdf.set_xy(pdf.l_margin + 6, reg_y + 3)
+        pdf._font("B", 7)
+        pdf.set_text_color(*BRAND_GREY)
+        pdf.cell(content_width - 9, 5, "REGULATORY BASIS", align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_x(pdf.l_margin + 6)
+        pdf._font("", 7)
+        pdf.set_text_color(*BRAND_LAVENDER)
+        pdf.multi_cell(content_width - 9, 4.5,
+            "Cat 4-5: Within 30 days — IEC 61400-5 §8.3 / OEM warranty condition\n"
+            "Cat 3: Within 90 days — next scheduled maintenance window\n"
+            "Cat 1-2: Next annual service — monitor interim",
+            new_x="LMARGIN", new_y="NEXT")
+
+        # Rotor imbalance note if HIGH or MODERATE
+        imbalance_risk = report_data.get("imbalance_risk", "LOW")
+        if imbalance_risk in ("HIGH", "MODERATE"):
+            imb_y = pdf.get_y() + 1
+            pdf.set_x(pdf.l_margin + 6)
+            pdf._font("B", 7)
+            pdf.set_text_color(*BRAND_AMBER)
+            pdf.cell(content_width - 9, 5,
+                "! ROTOR HEALTH: Recommend ISO 10816-21 vibration analysis post-repair before returning to full load.",
+                align="L", new_x="LMARGIN", new_y="NEXT")
+
 
 def _render_blade_map(pdf: BDDAReport, blade_label: str, blade_defects: list):
     """Per-blade defect map — dark theme: zone grid with severity colours, white circle markers."""
@@ -2302,8 +2521,48 @@ def _render_blade_map(pdf: BDDAReport, blade_label: str, blade_defects: list):
                 pdf.set_xy(cx - 4, cy - 3.5)
                 pdf.cell(8, 7, str(zone_count), align="C")
 
+    # ── Span ruler (5 tick marks: 0% 25% 50% 75% 100%) ──
+    ruler_y = start_y + len(zones) * cell_h + 2
+    ruler_x_start = start_x
+    ruler_total_w = len(positions) * cell_w
+    pdf._font("", 6)
+    pdf.set_text_color(*BRAND_GREY)
+    pdf.set_draw_color(*BRAND_GREY)
+    pdf.set_line_width(0.2)
+    for ti, pct in enumerate([0, 25, 50, 75, 100]):
+        tick_x = ruler_x_start + (pct / 100) * ruler_total_w
+        pdf.line(tick_x, ruler_y, tick_x, ruler_y + 2)
+        pdf.set_xy(tick_x - 4, ruler_y + 2)
+        pdf.cell(8, 4, f"{pct}%", align="C")
+
+    # ── LPS status line ──
+    lps_defect_names = {"lightning", "receptor", "lps", "bonding"}
+    has_lps_anomaly = any(
+        any(kw in (d.get("defect_name") or "").lower() for kw in lps_defect_names)
+        for d in blade_defects
+    )
+    lps_y = ruler_y + 7
+    lps_x = pdf.l_margin
+    lps_w = pdf.w - pdf.l_margin - pdf.r_margin
+    if has_lps_anomaly:
+        pdf.set_fill_color(*BRAND_AMBER)
+        pdf.rect(lps_x, lps_y, lps_w, 7, style="F")
+        pdf.set_xy(lps_x + 3, lps_y + 1)
+        pdf._font("B", 7)
+        pdf.set_text_color(*BRAND_DARK)
+        pdf.cell(lps_w - 6, 5, "! LPS ANOMALY — verify receptor continuity", align="L")
+    else:
+        pdf.set_fill_color(*BRAND_SLATE)
+        pdf.rect(lps_x, lps_y, lps_w, 7, style="F")
+        pdf.set_fill_color(*BRAND_PRIMARY)
+        pdf.rect(lps_x, lps_y, 3, 7, style="F")
+        pdf.set_xy(lps_x + 6, lps_y + 1)
+        pdf._font("", 7)
+        pdf.set_text_color(*BRAND_PRIMARY)
+        pdf.cell(lps_w - 9, 5, "LPS — No anomaly detected", align="L")
+
     # ── Severity legend ──
-    legend_y = start_y + len(zones) * cell_h + 8
+    legend_y = lps_y + 9
 
     pdf._font("B", 9)
     pdf.set_text_color(*BRAND_PRIMARY)
@@ -2358,6 +2617,457 @@ def _render_blade_map(pdf: BDDAReport, blade_label: str, blade_defects: list):
             pos = defect.get("position", "")
             name = defect.get("defect_name", "Unknown")[:60]
             pdf.cell(0, 6, f"[{zone}/{pos}] {name}", new_x="LMARGIN", new_y="NEXT")
+
+
+def _render_coverage_map(pdf: BDDAReport, report_data: dict):
+    """Image coverage map page — shows which zones have images for each blade."""
+    pdf.add_page()
+    _fill_page_bg(pdf)
+
+    pdf._font("B", 18)
+    pdf.set_text_color(*BRAND_PRIMARY)
+    pdf.cell(0, 12, "Image Coverage Map", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.6)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+    pdf.set_line_width(0.2)
+    pdf.ln(6)
+
+    # Check if we have images_by_zone or fall back to inferring from defects
+    images_by_zone = report_data.get("images_by_zone")
+    classify_data = report_data.get("classify_data", [])
+    blades_sorted = report_data.get("blades_sorted", []) or ["A", "B", "C"]
+
+    # Build covered zones set from classify_data
+    covered = set()
+    for img in classify_data:
+        blade = img.get("blade", "?")
+        zone = img.get("zone", "")
+        pos = img.get("position", "")
+        covered.add((blade, zone, pos))
+
+    zones = ["LE", "TE", "PS", "SS"]
+    positions = ["Root", "Mid", "Tip"]
+    cell_w, cell_h = 20, 8
+    covered_color = (180, 215, 80)   # tinted BRAND_PRIMARY
+    missing_color = (180, 60, 55)    # tinted BRAND_RED
+    content_width = pdf.w - pdf.l_margin - pdf.r_margin
+
+    inferred = images_by_zone is None
+    if inferred:
+        pdf._font("I", 7)
+        pdf.set_text_color(*BRAND_GREY)
+        pdf.cell(0, 5, "Note: Zone coverage inferred from defect classification data.", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(3)
+
+    blade_meta = report_data.get("turbine", {}).get("blades", {})
+
+    for blade in blades_sorted:
+        serial = ""
+        if isinstance(blade_meta, dict):
+            serial = blade_meta.get(blade, {}).get("serial", "") if isinstance(blade_meta.get(blade), dict) else ""
+
+        # Blade header
+        pdf._font("B", 9)
+        pdf.set_text_color(*BRAND_WHITE)
+        blade_title = f"Blade {blade}"
+        if serial:
+            blade_title += f"  (S/N: {serial})"
+        pdf.cell(0, 7, blade_title, new_x="LMARGIN", new_y="NEXT")
+
+        grid_x = pdf.l_margin + 22
+        grid_y = pdf.get_y() + 6
+
+        # Position headers
+        pdf._font("", 6)
+        pdf.set_text_color(*BRAND_GREY)
+        for ci, pos in enumerate(positions):
+            pdf.set_xy(grid_x + ci * cell_w, grid_y - 5)
+            pdf.cell(cell_w, 5, pos, align="C")
+
+        for ri, zone in enumerate(zones):
+            # Zone label
+            pdf.set_xy(pdf.l_margin, grid_y + ri * cell_h + cell_h / 2 - 3)
+            pdf._font("B", 7)
+            pdf.set_text_color(*BRAND_LAVENDER)
+            pdf.cell(20, 6, zone, align="R")
+
+            for ci, pos in enumerate(positions):
+                cx = grid_x + ci * cell_w
+                cy = grid_y + ri * cell_h
+
+                if images_by_zone is not None:
+                    is_covered = images_by_zone.get(blade, {}).get(zone, {}).get(pos, False)
+                else:
+                    is_covered = (blade, zone, pos) in covered or len(covered) == 0
+
+                fill = covered_color if is_covered else missing_color
+                pdf.set_fill_color(*fill)
+                pdf.set_draw_color(*BRAND_DARK)
+                pdf.set_line_width(0.5)
+                pdf.rect(cx, cy, cell_w, cell_h, style="FD")
+                pdf._font("", 5)
+                pdf.set_text_color(*BRAND_DARK)
+                label = "OK" if is_covered else "N/A"
+                pdf.set_xy(cx, cy + 1)
+                pdf.cell(cell_w, 6, label, align="C")
+
+        pdf.set_y(grid_y + len(zones) * cell_h + 6)
+
+    # Legend
+    pdf.ln(2)
+    pdf.set_fill_color(*covered_color)
+    pdf.rect(pdf.l_margin, pdf.get_y(), 12, 5, style="F")
+    pdf._font("", 7)
+    pdf.set_text_color(*BRAND_LAVENDER)
+    pdf.set_xy(pdf.l_margin + 14, pdf.get_y())
+    pdf.cell(25, 5, "Covered", align="L")
+    pdf.set_fill_color(*missing_color)
+    pdf.rect(pdf.l_margin + 45, pdf.get_y() - 5, 12, 5, style="F")
+    pdf.set_xy(pdf.l_margin + 59, pdf.get_y() - 5)
+    pdf.cell(25, 5, "Not covered / N/A", align="L")
+
+
+def _render_environmental_context(pdf: BDDAReport, report_data: dict):
+    """Environmental context page — site conditions, degradation risk factors, coating recommendation."""
+    pdf.add_page()
+    _fill_page_bg(pdf)
+
+    pdf._font("B", 18)
+    pdf.set_text_color(*BRAND_PRIMARY)
+    pdf.cell(0, 12, "Environmental Context", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.6)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+    pdf.set_line_width(0.2)
+    pdf.ln(6)
+
+    turbine = report_data.get("turbine", {})
+    country = (turbine.get("country") or "").strip()
+    content_width = pdf.w - pdf.l_margin - pdf.r_margin
+
+    # ── Section 1: Site Conditions ──
+    pdf._font("B", 10)
+    pdf.set_text_color(*BRAND_WHITE)
+    pdf.cell(0, 7, "SITE CONDITIONS", new_x="LMARGIN", new_y="NEXT")
+    _draw_accent_bar(pdf, pdf.l_margin, pdf.get_y(), w=content_width, h=0.5)
+    pdf.ln(3)
+
+    wind_ms = turbine.get("wind_speed_ms")
+    temp_c = turbine.get("temperature_c")
+    vis_km = turbine.get("visibility_km")
+
+    site_rows = [
+        ("Country", country or "N/A"),
+        ("Weather", turbine.get("weather") or "N/A"),
+        ("Wind Speed", f"{wind_ms} m/s" if wind_ms is not None else "N/A"),
+        ("Temperature", f"{temp_c} °C" if temp_c is not None else "N/A"),
+        ("Visibility", f"{vis_km} km" if vis_km is not None else "N/A"),
+    ]
+
+    for label, value in site_rows:
+        pdf.set_fill_color(*BRAND_NAVY)
+        pdf.rect(pdf.l_margin, pdf.get_y(), content_width, 7, style="F")
+        pdf.set_x(pdf.l_margin + 3)
+        pdf._font("B", 8)
+        pdf.set_text_color(*BRAND_GREY)
+        pdf.cell(content_width * 0.35, 7, label.upper(), align="L")
+        pdf._font("", 8)
+        pdf.set_text_color(*BRAND_LAVENDER)
+        pdf.cell(content_width * 0.65, 7, str(value)[:60], align="L", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(6)
+
+    # ── Section 2: Degradation Risk Factors ──
+    # Country-based risk matrix
+    country_upper = country.upper()
+    if any(c in country_upper for c in ["JAPAN", "PHILIPPINES", "TAIWAN"]):
+        risks = {
+            "UV Exposure":     ("High",   BRAND_RED),
+            "Salt Spray":      ("High",   BRAND_RED),
+            "Sand / Dust":     ("Medium", BRAND_AMBER),
+            "Humidity":        ("High",   BRAND_RED),
+            "Thermal Cycling": ("Medium", BRAND_AMBER),
+            "Bird Strike":     ("Medium", BRAND_AMBER),
+        }
+    elif "AUSTRALIA" in country_upper:
+        risks = {
+            "UV Exposure":     ("High",   BRAND_RED),
+            "Salt Spray":      ("Medium", BRAND_AMBER),
+            "Sand / Dust":     ("High",   BRAND_RED),
+            "Humidity":        ("Medium", BRAND_AMBER),
+            "Thermal Cycling": ("High",   BRAND_RED),
+            "Bird Strike":     ("Low",    BRAND_PRIMARY),
+        }
+    else:
+        risks = {
+            "UV Exposure":     ("Medium", BRAND_AMBER),
+            "Salt Spray":      ("Low",    BRAND_PRIMARY),
+            "Sand / Dust":     ("Low",    BRAND_PRIMARY),
+            "Humidity":        ("Medium", BRAND_AMBER),
+            "Thermal Cycling": ("Medium", BRAND_AMBER),
+            "Bird Strike":     ("Low",    BRAND_PRIMARY),
+        }
+
+    pdf._font("B", 10)
+    pdf.set_text_color(*BRAND_WHITE)
+    pdf.cell(0, 7, "DEGRADATION RISK FACTORS", new_x="LMARGIN", new_y="NEXT")
+    _draw_accent_bar(pdf, pdf.l_margin, pdf.get_y(), w=content_width, h=0.5)
+    pdf.ln(3)
+
+    for factor, (level, rgb) in risks.items():
+        row_y = pdf.get_y()
+        pdf.set_fill_color(*BRAND_NAVY)
+        pdf.rect(pdf.l_margin, row_y, content_width, 7, style="F")
+        pdf.set_x(pdf.l_margin + 3)
+        pdf._font("", 8)
+        pdf.set_text_color(*BRAND_LAVENDER)
+        pdf.cell(content_width * 0.55, 7, factor, align="L")
+        # Risk badge
+        badge_x = pdf.l_margin + content_width * 0.55 + 3
+        pdf.set_fill_color(*rgb)
+        pdf.rect(badge_x, row_y + 1, 22, 5, style="F")
+        pdf.set_xy(badge_x, row_y + 1)
+        pdf._font("B", 7)
+        pdf.set_text_color(*BRAND_DARK)
+        pdf.cell(22, 5, level.upper(), align="C", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(6)
+
+    # ── Section 3: Recommended Coating System ──
+    pdf._font("B", 10)
+    pdf.set_text_color(*BRAND_WHITE)
+    pdf.cell(0, 7, "RECOMMENDED COATING SYSTEM", new_x="LMARGIN", new_y="NEXT")
+    _draw_accent_bar(pdf, pdf.l_margin, pdf.get_y(), w=content_width, h=0.5)
+    pdf.ln(3)
+
+    uv_level = risks.get("UV Exposure", ("", None))[0]
+    salt_level = risks.get("Salt Spray", ("", None))[0]
+    if uv_level == "High" and salt_level == "High":
+        coating_text = (
+            "Polyurethane LEP system with UV stabilizer. "
+            "Reapply every 3 years. "
+            "Consider ceramic-filled topcoat for leading edge."
+        )
+    elif uv_level == "High":
+        coating_text = (
+            "Standard LEP system with UV stabilizer. "
+            "Annual inspection of LE zone recommended."
+        )
+    else:
+        coating_text = (
+            "Standard OEM-specified coating. "
+            "Inspect at next annual service."
+        )
+
+    coat_y = pdf.get_y()
+    pdf.set_fill_color(*BRAND_NAVY)
+    pdf.rect(pdf.l_margin, coat_y, content_width, 22, style="F")
+    pdf.set_fill_color(*BRAND_PRIMARY)
+    pdf.rect(pdf.l_margin, coat_y, 3, 22, style="F")
+    pdf.set_xy(pdf.l_margin + 7, coat_y + 4)
+    pdf._font("", 9)
+    pdf.set_text_color(*BRAND_LAVENDER)
+    pdf.multi_cell(content_width - 10, 5.5, coating_text)
+
+
+def _render_fleet_summary(pdf: BDDAReport, report_data: dict):
+    """Fleet health summary page — placeholder for multi-turbine comparison."""
+    pdf.add_page()
+    _fill_page_bg(pdf)
+
+    pdf._font("B", 18)
+    pdf.set_text_color(*BRAND_PRIMARY)
+    pdf.cell(0, 12, "Fleet Health Summary", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.6)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+    pdf.set_line_width(0.2)
+    pdf.ln(6)
+
+    content_width = pdf.w - pdf.l_margin - pdf.r_margin
+
+    # Amber notice box
+    note_y = pdf.get_y()
+    pdf.set_fill_color(*BRAND_NAVY)
+    pdf.set_draw_color(*BRAND_AMBER)
+    pdf.set_line_width(0.4)
+    pdf.rect(pdf.l_margin, note_y, content_width, 18, style="FD")
+    pdf.set_fill_color(*BRAND_AMBER)
+    pdf.rect(pdf.l_margin, note_y, 3, 18, style="F")
+    pdf.set_xy(pdf.l_margin + 7, note_y + 3)
+    pdf._font("B", 8)
+    pdf.set_text_color(*BRAND_AMBER)
+    pdf.cell(content_width - 10, 5, "FLEET COMPARISON — DATA PENDING", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(pdf.l_margin + 7)
+    pdf._font("", 8)
+    pdf.set_text_color(*BRAND_LAVENDER)
+    pdf.multi_cell(content_width - 10, 5,
+        "Fleet comparison requires multi-turbine data. This section populates automatically "
+        "when multiple turbines from the same site are inspected.")
+
+    pdf.ln(8)
+
+    # Single-turbine summary table
+    turbine = report_data.get("turbine", {})
+    turbine_id = turbine.get("turbine_id", "N/A")
+    condition = report_data.get("condition", "A")
+    critical_count = report_data.get("critical_count", 0)
+    aep_impact = report_data.get("aep_impact", {})
+    loss_display = aep_impact.get("loss_display", "Est. -0.0% AEP")
+
+    col_labels = ["Turbine ID", "Health Score", "Critical", "Est. AEP Loss", "Priority"]
+    col_values = [turbine_id, f"Condition {condition}", str(critical_count), loss_display, "1 of 1"]
+    col_widths_f = [0.18, 0.22, 0.13, 0.27, 0.20]
+
+    # Header
+    pdf.set_fill_color(*BRAND_NAVY)
+    pdf.set_text_color(*BRAND_PRIMARY)
+    pdf._font("B", 8)
+    for label, wf in zip(col_labels, col_widths_f):
+        pdf.cell(content_width * wf, 8, label, border=0, fill=True, align="C")
+    pdf.ln(8)
+
+    # Data row
+    cond_rgb = CONDITION_COLORS_RGB.get(condition, BRAND_PRIMARY)
+    pdf.set_fill_color(*BRAND_DARK)
+    pdf._font("", 8)
+    pdf.set_text_color(*BRAND_LAVENDER)
+    for i, (val, wf) in enumerate(zip(col_values, col_widths_f)):
+        if i == 1:
+            pdf.set_text_color(*cond_rgb)
+            pdf._font("B", 8)
+        else:
+            pdf.set_text_color(*BRAND_LAVENDER)
+            pdf._font("", 8)
+        pdf.cell(content_width * wf, 8, str(val), border="B", fill=True, align="C")
+    pdf.ln(10)
+
+    # Footer note
+    pdf._font("I", 8)
+    pdf.set_text_color(*BRAND_GREY)
+    pdf.multi_cell(content_width, 5,
+        "Submit additional turbine inspections to enable fleet-wide ranking and prioritization.")
+
+
+def _render_photo_index(pdf: BDDAReport, report_data: dict):
+    """Photo appendix — grid of defect thumbnails, 3 per row."""
+    pdf.add_page()
+    _fill_page_bg(pdf)
+
+    pdf._font("B", 18)
+    pdf.set_text_color(*BRAND_PRIMARY)
+    pdf.cell(0, 12, "Photo Appendix", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(*BRAND_PRIMARY)
+    pdf.set_line_width(0.6)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+    pdf.set_line_width(0.2)
+    pdf.ln(4)
+
+    blade_findings = report_data.get("blade_findings", {})
+    blades_sorted = report_data.get("blades_sorted", [])
+
+    # Collect all defects with their data
+    all_for_index = []
+    for blade in blades_sorted:
+        for defect in blade_findings.get(blade, []):
+            all_for_index.append(defect)
+
+    if not all_for_index:
+        pdf._font("I", 10)
+        pdf.set_text_color(*BRAND_GREY)
+        pdf.cell(0, 10, "No defect images available.", align="C", new_x="LMARGIN", new_y="NEXT")
+        return
+
+    thumb_w, thumb_h = 52, 38
+    thumb_gap_x = 4
+    thumb_gap_y = 14  # space below thumbnail for labels
+    cols = 3
+    content_width = pdf.w - pdf.l_margin - pdf.r_margin
+    total_thumbs_w = cols * thumb_w + (cols - 1) * thumb_gap_x
+    margin_extra = (content_width - total_thumbs_w) / 2
+
+    def _new_page_if_needed():
+        if pdf.get_y() + thumb_h + thumb_gap_y + 12 > 275:
+            pdf.add_page()
+            _fill_page_bg(pdf)
+            pdf.set_y(20)
+
+    start_y = pdf.get_y()
+
+    for idx, defect in enumerate(all_for_index):
+        col = idx % cols
+        row_start = (idx // cols)
+
+        if col == 0 and idx > 0:
+            _new_page_if_needed()
+            start_y = pdf.get_y()
+
+        gx = pdf.l_margin + margin_extra + col * (thumb_w + thumb_gap_x)
+        gy = start_y
+
+        cat = defect.get("category", 0)
+        sev_info = SEVERITY_COLORS_IEC.get(cat, SEVERITY_COLORS_IEC[0])
+        defect_id = defect.get("defect_id", f"D-{idx+1:03d}")
+        defect_name = (defect.get("defect_name") or "Unknown")[:22]
+        img_path = defect.get("image_path", "")
+
+        # Draw thumbnail frame
+        path = Path(img_path) if img_path else None
+        if path and path.exists():
+            # Dark frame border
+            pdf.set_fill_color(*BRAND_NAVY)
+            pdf.set_draw_color(*BRAND_SLATE)
+            pdf.set_line_width(0.3)
+            pdf.rect(gx, gy, thumb_w, thumb_h, style="FD")
+            try:
+                if HAS_PILLOW:
+                    with PILImage.open(path) as img:
+                        img = img.convert("RGB")
+                        img.thumbnail((int(thumb_w * 11.8), int(thumb_h * 11.8)), PILImage.LANCZOS)
+                        buf = io.BytesIO()
+                        img.save(buf, format="JPEG", quality=75)
+                        buf.seek(0)
+                    pdf.image(buf, x=gx + 1, y=gy + 1, w=thumb_w - 2, h=thumb_h - 2, keep_aspect_ratio=True)
+                else:
+                    pdf.image(str(path), x=gx + 1, y=gy + 1, w=thumb_w - 2, h=thumb_h - 2, keep_aspect_ratio=True)
+            except Exception:
+                _draw_placeholder(pdf, gx + 1, gy + 1, thumb_w - 2, thumb_h - 2)
+        else:
+            # Grey placeholder
+            pdf.set_fill_color(*BRAND_SLATE)
+            pdf.set_draw_color(*BRAND_GREY)
+            pdf.set_line_width(0.3)
+            pdf.rect(gx, gy, thumb_w, thumb_h, style="FD")
+            pdf.set_xy(gx, gy + thumb_h / 2 - 3)
+            pdf._font("I", 6)
+            pdf.set_text_color(*BRAND_GREY)
+            pdf.cell(thumb_w, 6, defect_id, align="C")
+
+        # Severity badge on thumbnail (top-right corner)
+        badge_w = 16
+        pdf.set_fill_color(*sev_info["rgb"])
+        pdf.rect(gx + thumb_w - badge_w - 1, gy + 2, badge_w, 5, style="F")
+        pdf.set_xy(gx + thumb_w - badge_w - 1, gy + 2)
+        pdf._font("B", 5)
+        pdf.set_text_color(*sev_info["text_rgb"])
+        pdf.cell(badge_w, 5, f"Cat {cat}", align="C")
+
+        # Labels below thumbnail
+        label_y = gy + thumb_h + 1
+        pdf.set_xy(gx, label_y)
+        pdf._font("B", 7)
+        pdf.set_text_color(*BRAND_WHITE)
+        pdf.cell(thumb_w, 5, defect_id, align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_xy(gx, label_y + 5)
+        pdf._font("", 6)
+        pdf.set_text_color(*BRAND_LAVENDER)
+        pdf.cell(thumb_w, 4, defect_name, align="C")
+
+        # After every row of 3, advance Y
+        if col == cols - 1 or idx == len(all_for_index) - 1:
+            pdf.set_y(start_y + thumb_h + thumb_gap_y + 4)
+            start_y = pdf.get_y()
 
 
 def _render_inspection_details(pdf: BDDAReport, report_data: dict):
@@ -2532,6 +3242,10 @@ def generate_pdf_fpdf2(report_data: dict, output_path: Path) -> Path:
     _render_toc(pdf, report_data)
     _render_executive_summary(pdf, report_data)
 
+    # ── Coverage map + environmental context (after executive summary) ──
+    _render_coverage_map(pdf, report_data)
+    _render_environmental_context(pdf, report_data)
+
     # ── Turbine overview diagram (isometric + blade image grid) ──
     _render_turbine_diagram(pdf, report_data)
 
@@ -2555,6 +3269,10 @@ def generate_pdf_fpdf2(report_data: dict, output_path: Path) -> Path:
     for blade in blades_sorted:
         pdf.add_page()
         _render_blade_map(pdf, blade, blade_findings.get(blade, []))
+
+    # ── Fleet summary + photo appendix (after blade maps) ──
+    _render_fleet_summary(pdf, report_data)
+    _render_photo_index(pdf, report_data)
 
     _render_inspection_details(pdf, report_data)
 
