@@ -672,7 +672,6 @@ body {
 
 /* ─── PIPELINE STEPS ─────────────────────────────────────────────────────── */
 .pipeline-steps {
-  padding: var(--s3) var(--s4);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -681,17 +680,15 @@ body {
 .pipe-step {
   display: flex;
   gap: var(--s3);
-  padding: var(--s3) 0;
-  border-bottom: 1px solid var(--line-soft);
+  padding: var(--s4) var(--s4);
+  border: none;
 }
 
-.pipe-step:last-child { border-bottom: 0; }
-
-/* Per-step accent colors */
-.pipe-step:nth-child(1) { border-left: 3px solid #8B6914; background: rgba(139,105,20,0.12); }
-.pipe-step:nth-child(2) { border-left: 3px solid #1E3A5F; background: rgba(30,58,95,0.12); }
-.pipe-step:nth-child(3) { border-left: 3px solid #5A4070; background: rgba(90,64,112,0.12); }
-.pipe-step:nth-child(4) { border-left: 3px solid #7A6030; background: rgba(122,96,48,0.12); }
+/* Match form section style — solid bg + inset left bar */
+.pipe-step:nth-child(1) { background: var(--warm-coffee); box-shadow: inset 4px 0 0 var(--warm-coffee-line); }
+.pipe-step:nth-child(2) { background: var(--warm-navy);   box-shadow: inset 4px 0 0 var(--warm-navy-line); }
+.pipe-step:nth-child(3) { background: var(--warm-taupe);  box-shadow: inset 4px 0 0 var(--warm-taupe-line); }
+.pipe-step:nth-child(4) { background: var(--warm-amber);  box-shadow: inset 4px 0 0 var(--warm-amber-line); }
 
 .pipe-num {
   font-family: var(--mono);
@@ -700,18 +697,18 @@ body {
   color: var(--mid-2);
   letter-spacing: 0.06em;
   min-width: 24px;
-  padding-top: 1px;
+  padding-top: 2px;
   flex-shrink: 0;
 }
 
 .pipe-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .pipe-name {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--ink);
   line-height: 1.2;
@@ -720,10 +717,16 @@ body {
 .pipe-model {
   font-family: var(--mono);
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--signal-deep);
-  font-weight: 600;
 }
+
+/* Legend colors per step to match section */
+.pipe-step:nth-child(1) .pipe-num { color: var(--warm-coffee-line); }
+.pipe-step:nth-child(2) .pipe-num { color: var(--warm-navy-line); }
+.pipe-step:nth-child(3) .pipe-num { color: var(--warm-taupe-line); }
+.pipe-step:nth-child(4) .pipe-num { color: var(--warm-amber-line); }
 
 .pipe-desc {
   font-size: 11px;
