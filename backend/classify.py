@@ -70,7 +70,7 @@ _OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000
 # IEC Cat 0-4 → BDDA 0-10 midpoint mapping
 _IEC_TO_BDDA = {0: 0, 1: 1, 2: 3, 3: 6, 4: 9}
 
-_MODEL = "gemini-2.0-flash"
+_MODEL = "gemini-2.5-pro"
 
 
 def iec_to_bdda(iec_cat: int) -> int:

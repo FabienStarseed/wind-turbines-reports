@@ -110,7 +110,7 @@ class DeepAnalysis:
 _INPUT_COST_PER_TOKEN  = 0.10 / 1_000_000
 _OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000
 
-_MODEL = "gemini-2.0-flash"
+_MODEL = "gemini-2.5-pro"
 
 
 def call_gemini_analyze(

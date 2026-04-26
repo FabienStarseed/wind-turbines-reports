@@ -47,7 +47,7 @@
     <form id="uploadForm" enctype="multipart/form-data">
 
       <!-- Turbine Identity -->
-      <fieldset class="fs">
+      <fieldset class="fs fs-sage">
         <legend class="fs-legend">Asset Identity</legend>
         <div class="field-row field-row-2">
           <div class="field">
@@ -103,7 +103,7 @@
       </fieldset>
 
       <!-- Inspection Details -->
-      <fieldset class="fs">
+      <fieldset class="fs fs-sky">
         <legend class="fs-legend">Inspection Details</legend>
         <div class="field-row field-row-3">
           <div class="field">
@@ -122,7 +122,7 @@
       </fieldset>
 
       <!-- Environmental Conditions -->
-      <fieldset class="fs fs-optional">
+      <fieldset class="fs fs-sand fs-optional">
         <legend class="fs-legend">Environmental Conditions <span class="opt-tag">optional</span></legend>
         <div class="field-row field-row-4">
           <div class="field">
@@ -145,7 +145,7 @@
       </fieldset>
 
       <!-- Notes -->
-      <fieldset class="fs fs-optional">
+      <fieldset class="fs fs-mist fs-optional">
         <legend class="fs-legend">Inspection Notes <span class="opt-tag">optional</span></legend>
         <div class="field">
           <textarea name="notes" rows="3" placeholder="Limitations, blade access issues, weather observations…"></textarea>
@@ -153,7 +153,7 @@
       </fieldset>
 
       <!-- Upload -->
-      <fieldset class="fs">
+      <fieldset class="fs fs-amber">
         <legend class="fs-legend">Upload Images <span class="req">*</span></legend>
         <div class="drop-zone" id="dropZone">
           <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required aria-label="Select images or ZIP file">
@@ -186,7 +186,7 @@
   <div class="col col-status">
 
     <!-- Active Job -->
-    <div class="status-section" id="jobPanel" style="display:none;">
+    <div class="status-section status-amber" id="jobPanel" style="display:none;">
       <div class="section-header">
         <div class="kicker">Live</div>
         <h2 class="section-title">Analysis Progress</h2>
@@ -236,7 +236,7 @@
     </div>
 
     <!-- Pipeline -->
-    <div class="status-section">
+    <div class="status-section status-sage">
       <div class="section-header">
         <div class="kicker">System</div>
         <h2 class="section-title">AI Pipeline</h2>
@@ -246,7 +246,7 @@
           <div class="pipe-num">01</div>
           <div class="pipe-body">
             <div class="pipe-name">Triage</div>
-            <div class="pipe-model">Kimi K2.5</div>
+            <div class="pipe-model">Claude Opus 4.5</div>
             <div class="pipe-desc">Binary defect screening — all images (~$0.50/turbine)</div>
           </div>
         </div>
@@ -262,7 +262,7 @@
           <div class="pipe-num">03</div>
           <div class="pipe-body">
             <div class="pipe-name">Deep Analysis</div>
-            <div class="pipe-model">Claude Opus 4</div>
+            <div class="pipe-model">Claude Opus 4.5</div>
             <div class="pipe-desc">Root cause + repair plan — critical defects (~$8/turbine)</div>
           </div>
         </div>
@@ -278,7 +278,7 @@
     </div>
 
     <!-- Recent Reports -->
-    <div class="status-section">
+    <div class="status-section status-sky">
       <div class="section-header">
         <div class="kicker">History</div>
         <h2 class="section-title">Recent Reports</h2>
