@@ -3,75 +3,80 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BDDA — Blade Defect Detection Agent</title>
+  <title>ABRS — Blade Inspection Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- HEADER                                                                      -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- ── HEADER ─────────────────────────────────────────────────────────────── -->
 <header class="app-header">
   <div class="header-inner">
     <div class="brand">
-      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
-        <path d="M12 9.5 L10 3 L12 2 L14 3 Z" fill="currentColor" opacity="0.85"/>
-        <path d="M12 14.5 L5.5 19 L4.5 17 L6 14 Z" fill="currentColor" opacity="0.85"/>
-        <path d="M12 14.5 L18.5 19 L19.5 17 L18 14 Z" fill="currentColor" opacity="0.85"/>
+      <svg class="brand-logo" width="48" height="28" viewBox="0 0 80 40" fill="none">
+        <path d="M 2,20 Q 3,9 14,7 Q 35,5 55,9 Q 70,12 77,18 L 77,20 L 2,20 Z" fill="#0E0F0C"/>
+        <path d="M 2,20 Q 3,31 14,33 Q 35,35 55,31 Q 70,28 77,22 L 77,20 L 2,20 Z" fill="#2A2B26"/>
+        <line x1="2" y1="20" x2="77" y2="20" stroke="#F2C12E" stroke-width="1" stroke-dasharray="2 1.5"/>
+        <circle cx="40" cy="20" r="1.6" fill="#F2C12E"/>
+        <circle cx="40" cy="20" r="3.5" fill="none" stroke="#F2C12E" stroke-width="0.5"/>
       </svg>
       <div class="brand-text">
-        <span class="brand-name">BDDA</span>
-        <span class="brand-sub">Blade Defect Detection Agent</span>
+        <span class="brand-name">ABRS</span>
+        <span class="brand-sub">Aerial Blade Report System</span>
       </div>
     </div>
-    <div class="header-meta">
+    <div class="header-right">
       <span class="api-status" id="apiStatus">Checking APIs…</span>
     </div>
   </div>
 </header>
 
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
-<!-- MAIN CONTENT                                                                -->
-<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- ── MAIN ───────────────────────────────────────────────────────────────── -->
 <main class="app-main">
 
-  <!-- LEFT PANEL: Form -->
-  <div class="panel left-panel">
-    <div class="panel-header">
-      <h1 class="panel-title">New Inspection Report</h1>
+  <!-- ══ LEFT: Upload Form ══════════════════════════════════════════════════ -->
+  <div class="col col-form">
+
+    <div class="col-header">
+      <div class="kicker">New Inspection</div>
+      <h1 class="col-title">Inspection Report</h1>
     </div>
 
     <form id="uploadForm" enctype="multipart/form-data">
 
-      <!-- ── Turbine Identity ── -->
-      <div class="form-section">
-        <div class="form-section-label">Turbine Identity</div>
-        <div class="form-grid form-grid-2">
-          <div class="field field-hero">
-            <label for="f-turbine-id">Turbine ID <span class="req" aria-label="required">*</span></label>
-            <input type="text" id="f-turbine-id" name="turbine_id" placeholder="JAP19" required autocomplete="off">
+      <!-- Turbine Identity -->
+      <fieldset class="fs">
+        <legend class="fs-legend">Asset Identity</legend>
+        <div class="field-row field-row-2">
+          <div class="field">
+            <label for="f-turbine-id">Turbine ID <span class="req">*</span></label>
+            <input type="text" id="f-turbine-id" name="turbine_id" placeholder="WTG-A07" required autocomplete="off">
           </div>
           <div class="field">
-            <label for="f-turbine-model">Turbine Model <span class="req" aria-label="required">*</span></label>
+            <label for="f-turbine-model">Turbine Model <span class="req">*</span></label>
             <input type="text" id="f-turbine-model" name="turbine_model" placeholder="Vestas V90-2.0 MW" required>
           </div>
+        </div>
+        <div class="field-row field-row-2">
           <div class="field">
-            <label for="f-site-name">Site Name <span class="req" aria-label="required">*</span></label>
-            <input type="text" id="f-site-name" name="site_name" placeholder="Tomamae Wind Farm" required>
+            <label for="f-site-name">Site Name <span class="req">*</span></label>
+            <input type="text" id="f-site-name" name="site_name" placeholder="Norne Wind Park" required>
           </div>
           <div class="field">
-            <label for="f-country">Country <span class="req" aria-label="required">*</span></label>
+            <label for="f-country">Country <span class="req">*</span></label>
             <select id="f-country" name="country" required>
-              <option value="">Select country…</option>
+              <option value="">Select…</option>
               <option value="Japan">Japan</option>
               <option value="Philippines">Philippines</option>
               <option value="Taiwan">Taiwan</option>
+              <option value="Australia">Australia</option>
               <option value="Other">Other</option>
             </select>
           </div>
         </div>
-        <div class="form-grid form-grid-3 form-optional-group">
+        <div class="field-row field-row-3">
           <div class="field">
             <label for="f-hub">Hub Height (m)</label>
             <input type="number" id="f-hub" name="hub_height_m" placeholder="80">
@@ -85,7 +90,7 @@
             <input type="number" id="f-blade" name="blade_length_m" placeholder="44">
           </div>
         </div>
-        <div class="form-grid form-grid-2 form-optional-group">
+        <div class="field-row field-row-2">
           <div class="field">
             <label for="f-lat">GPS Latitude</label>
             <input type="text" id="f-lat" name="gps_lat" placeholder="44.3123">
@@ -95,18 +100,18 @@
             <input type="text" id="f-lon" name="gps_lon" placeholder="141.6789">
           </div>
         </div>
-      </div>
+      </fieldset>
 
-      <!-- ── Inspection Details ── -->
-      <div class="form-section">
-        <div class="form-section-label">Inspection Details</div>
-        <div class="form-grid form-grid-3">
+      <!-- Inspection Details -->
+      <fieldset class="fs">
+        <legend class="fs-legend">Inspection Details</legend>
+        <div class="field-row field-row-3">
           <div class="field">
-            <label for="f-inspector">Inspector Name <span class="req" aria-label="required">*</span></label>
+            <label for="f-inspector">Inspector Name <span class="req">*</span></label>
             <input type="text" id="f-inspector" name="inspector_name" placeholder="Your name" required>
           </div>
           <div class="field">
-            <label for="f-date">Inspection Date <span class="req" aria-label="required">*</span></label>
+            <label for="f-date">Inspection Date <span class="req">*</span></label>
             <input type="date" id="f-date" name="inspection_date" required>
           </div>
           <div class="field">
@@ -114,25 +119,22 @@
             <input type="text" id="f-drone" name="drone_model" placeholder="DJI Matrice 300 RTK" value="DJI Matrice 300 RTK">
           </div>
         </div>
-      </div>
+      </fieldset>
 
-      <!-- ── Environmental Conditions ── -->
-      <div class="form-section form-section-optional">
-        <div class="form-section-label">
-          Environmental Conditions
-          <span class="optional-tag">optional</span>
-        </div>
-        <div class="form-grid form-grid-4">
+      <!-- Environmental Conditions -->
+      <fieldset class="fs fs-optional">
+        <legend class="fs-legend">Environmental Conditions <span class="opt-tag">optional</span></legend>
+        <div class="field-row field-row-4">
           <div class="field">
             <label for="f-weather">Weather</label>
             <input type="text" id="f-weather" name="weather" placeholder="Clear, sunny">
           </div>
           <div class="field">
-            <label for="f-wind">Wind Speed (m/s)</label>
+            <label for="f-wind">Wind (m/s)</label>
             <input type="number" step="0.1" id="f-wind" name="wind_speed_ms" placeholder="4.2">
           </div>
           <div class="field">
-            <label for="f-temp">Temperature (°C)</label>
+            <label for="f-temp">Temp (°C)</label>
             <input type="number" id="f-temp" name="temperature_c" placeholder="22">
           </div>
           <div class="field">
@@ -140,42 +142,39 @@
             <input type="number" id="f-vis" name="visibility_km" placeholder="20">
           </div>
         </div>
-      </div>
+      </fieldset>
 
-      <!-- ── Notes ── -->
-      <div class="form-section form-section-optional">
-        <div class="form-section-label">
-          Inspection Notes
-          <span class="optional-tag">optional</span>
-        </div>
+      <!-- Notes -->
+      <fieldset class="fs fs-optional">
+        <legend class="fs-legend">Inspection Notes <span class="opt-tag">optional</span></legend>
         <div class="field">
-          <textarea name="notes" rows="3" placeholder="Limitations, blade access issues, weather notes…"></textarea>
+          <textarea name="notes" rows="3" placeholder="Limitations, blade access issues, weather observations…"></textarea>
         </div>
-      </div>
+      </fieldset>
 
-      <!-- ── Image Upload ── -->
-      <div class="form-section">
-        <div class="form-section-label">Upload Images <span class="req" aria-label="required">*</span></div>
+      <!-- Upload -->
+      <fieldset class="fs">
+        <legend class="fs-legend">Upload Images <span class="req">*</span></legend>
         <div class="drop-zone" id="dropZone">
           <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required aria-label="Select images or ZIP file">
           <div class="drop-zone-content">
-            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="8" y="18" width="32" height="22" rx="3" stroke="currentColor" stroke-width="2" fill="none"/>
-              <path d="M24 14 L24 30" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path d="M18 20 L24 14 L30 20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <rect x="16" y="8" width="16" height="8" rx="2" fill="currentColor" opacity="0.15"/>
+            <svg class="drop-icon" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+              <rect x="6" y="16" width="28" height="18" rx="2" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M20 12 L20 26" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M14 18 L20 12 L26 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="14" y="7" width="12" height="7" rx="1.5" fill="currentColor" opacity="0.12"/>
             </svg>
-            <div class="drop-text">Drag &amp; drop your DJI mission folder ZIP</div>
-            <div class="drop-sub">or click to browse — ZIP preferred for full folder structure</div>
-            <div class="drop-hint">Accepted: .zip (DJI mission folder) &nbsp;·&nbsp; .jpg / .png (individual images)</div>
+            <div class="drop-primary">Drag &amp; drop DJI mission folder ZIP</div>
+            <div class="drop-secondary">or click to browse — ZIP preferred for full folder structure</div>
+            <div class="drop-hint">Accepted: .zip · .jpg · .png</div>
           </div>
         </div>
         <div class="file-preview" id="filePreview" style="display:none;"></div>
-      </div>
+      </fieldset>
 
       <button type="submit" class="submit-btn" id="submitBtn">
-        <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
+          <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.22 5.03L7.53 9.72a.75.75 0 01-1.06 0L4.78 8.03a.75.75 0 011.06-1.06l1.16 1.16 3.16-3.16a.75.75 0 011.06 1.06z"/>
         </svg>
         Generate Inspection Report
       </button>
@@ -183,20 +182,19 @@
     </form>
   </div>
 
-  <!-- RIGHT PANEL: Status + History -->
-  <div class="panel right-panel">
+  <!-- ══ RIGHT: Status + History ════════════════════════════════════════════ -->
+  <div class="col col-status">
 
     <!-- Active Job -->
-    <div class="panel-section" id="jobPanel" style="display:none;">
-      <div class="panel-header">
-        <h2 class="panel-title">Analysis Progress</h2>
+    <div class="status-section" id="jobPanel" style="display:none;">
+      <div class="section-header">
+        <div class="kicker">Live</div>
+        <h2 class="section-title">Analysis Progress</h2>
       </div>
       <div class="job-card" id="jobCard">
-        <div class="job-header">
-          <div class="job-header-main">
-            <span class="job-turbine" id="jobTurbineId">—</span>
-            <span class="job-id" id="jobId">—</span>
-          </div>
+        <div class="job-meta">
+          <span class="job-turbine" id="jobTurbineId">—</span>
+          <span class="job-id-badge" id="jobId">—</span>
         </div>
         <div class="progress-stages" id="progressStages">
           <div class="stage-item" data-stage="ingesting">
@@ -205,15 +203,15 @@
           </div>
           <div class="stage-item" data-stage="triaging">
             <div class="stage-dot"></div>
-            <div class="stage-label">Triage (Kimi)</div>
+            <div class="stage-label">Triage</div>
           </div>
           <div class="stage-item" data-stage="classifying">
             <div class="stage-dot"></div>
-            <div class="stage-label">Classify (Gemini)</div>
+            <div class="stage-label">Classify</div>
           </div>
           <div class="stage-item" data-stage="analyzing">
             <div class="stage-dot"></div>
-            <div class="stage-label">Analyze (Claude)</div>
+            <div class="stage-label">Analyze</div>
           </div>
           <div class="stage-item" data-stage="generating_report">
             <div class="stage-dot"></div>
@@ -224,67 +222,66 @@
             <div class="stage-label">Complete</div>
           </div>
         </div>
-        <div class="progress-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100">
-          <div class="progress-bar" id="progressBar" style="width:0%"></div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressBar" style="width:0%"></div>
         </div>
         <div class="job-message" id="jobMessage">Queued…</div>
         <div class="job-stats" id="jobStats"></div>
-
-        <a class="download-btn" id="downloadBtn" style="display:none;" href="#">
-          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
-          </svg>
+        <a class="dl-btn" id="downloadBtn" style="display:none;" href="#">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M8 1a.75.75 0 01.75.75v6.69l2.22-2.22a.75.75 0 111.06 1.06l-3.5 3.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 111.06-1.06L7.25 8.44V1.75A.75.75 0 018 1zM2.75 14a.75.75 0 000 1.5h10.5a.75.75 0 000-1.5H2.75z"/></svg>
           Download Report PDF
         </a>
         <div class="error-block" id="errorBlock" style="display:none;"></div>
       </div>
     </div>
 
-    <!-- Pipeline info -->
-    <div class="panel-section">
-      <div class="panel-header">
-        <h2 class="panel-title">AI Pipeline</h2>
+    <!-- Pipeline -->
+    <div class="status-section">
+      <div class="section-header">
+        <div class="kicker">System</div>
+        <h2 class="section-title">AI Pipeline</h2>
       </div>
-      <div class="pipeline-info">
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-1">1</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Triage</div>
-            <div class="pipeline-step-model">Kimi K2.5</div>
-            <div class="pipeline-step-desc">Binary YES/NO defect screening — all images (~$0.50/turbine)</div>
+      <div class="pipeline-steps">
+        <div class="pipe-step">
+          <div class="pipe-num">01</div>
+          <div class="pipe-body">
+            <div class="pipe-name">Triage</div>
+            <div class="pipe-model">Kimi K2.5</div>
+            <div class="pipe-desc">Binary defect screening — all images (~$0.50/turbine)</div>
           </div>
         </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-2">2</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Classification</div>
-            <div class="pipeline-step-model">Gemini 2.5 Pro</div>
-            <div class="pipeline-step-desc">Defect type + Vestas Cat 1–5 severity — flagged images (~$3/turbine)</div>
+        <div class="pipe-step">
+          <div class="pipe-num">02</div>
+          <div class="pipe-body">
+            <div class="pipe-name">Classification</div>
+            <div class="pipe-model">Gemini 2.5 Pro</div>
+            <div class="pipe-desc">Defect type + IEC severity — flagged images (~$3/turbine)</div>
           </div>
         </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-3">3</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">Deep Analysis</div>
-            <div class="pipeline-step-model">Claude Opus 4.6</div>
-            <div class="pipeline-step-desc">Root cause + Vestas SMP — Cat 4–5 only (~$8/turbine)</div>
+        <div class="pipe-step">
+          <div class="pipe-num">03</div>
+          <div class="pipe-body">
+            <div class="pipe-name">Deep Analysis</div>
+            <div class="pipe-model">Claude Opus 4</div>
+            <div class="pipe-desc">Root cause + repair plan — critical defects (~$8/turbine)</div>
           </div>
         </div>
-        <div class="pipeline-step">
-          <div class="pipeline-step-badge step-4">4</div>
-          <div class="pipeline-step-body">
-            <div class="pipeline-step-name">PDF Report</div>
-            <div class="pipeline-step-model">WeasyPrint</div>
-            <div class="pipeline-step-desc">Professional Vestas-format PDF with findings + action matrix</div>
+        <div class="pipe-step">
+          <div class="pipe-num">04</div>
+          <div class="pipe-body">
+            <div class="pipe-name">PDF Report</div>
+            <div class="pipe-model">fpdf2</div>
+            <div class="pipe-desc">Professional inspection report with findings &amp; action matrix</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Recent jobs -->
-    <div class="panel-section">
-      <div class="panel-header">
-        <h2 class="panel-title">Recent Reports</h2>
+    <!-- Recent Reports -->
+    <div class="status-section">
+      <div class="section-header">
+        <div class="kicker">History</div>
+        <h2 class="section-title">Recent Reports</h2>
       </div>
       <div id="jobHistory" class="job-history">
         <div class="history-empty">No reports generated yet.</div>
