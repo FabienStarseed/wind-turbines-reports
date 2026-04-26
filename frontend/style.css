@@ -55,7 +55,7 @@
 
 html, body {
   min-height: 100%;
-  background: var(--bg);
+  background: #1C1A16;   /* deep warm dark — page canvas */
   color: var(--ink);
   font-family: var(--display);
   font-size: 14px;
@@ -66,8 +66,8 @@ html, body {
 
 /* ─── HEADER ─────────────────────────────────────────────────────────────── */
 .app-header {
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
+  background: #2A2218;   /* warm dark coffee */
+  border-bottom: 1px solid #524030;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -102,7 +102,7 @@ html, body {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: var(--ink);
+  color: #F2C12E;        /* amber on dark header */
   line-height: 1;
 }
 
@@ -111,7 +111,7 @@ html, body {
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--mid);
+  color: rgba(255,255,255,0.45);
   line-height: 1;
 }
 
@@ -153,7 +153,7 @@ html, body {
 
 /* ─── COLUMNS ────────────────────────────────────────────────────────────── */
 .col-form {
-  background: var(--bg);
+  background: #F7F4EE;   /* warm parchment — form card */
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
 }
@@ -168,6 +168,8 @@ html, body {
 .col-header {
   padding: var(--s5) var(--s5) var(--s4);
   border-bottom: 1px solid var(--line);
+  background: #EDE8DE;   /* warm linen header */
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
 }
 
 .kicker {
@@ -411,10 +413,10 @@ html, body {
   gap: var(--s2);
   width: calc(100% - var(--s5) * 2);
   margin: var(--s4) var(--s5) var(--s5);
-  padding: 12px var(--s5);
-  background: var(--ink);
-  color: var(--bg);
-  border: none;
+  padding: 13px var(--s5);
+  background: #3D3020;   /* warm dark coffee — complementary to amber */
+  color: #F2C12E;        /* amber text on dark */
+  border: 1px solid #C99A12;
   border-radius: var(--r);
   font-family: var(--display);
   font-size: 14px;
@@ -424,7 +426,7 @@ html, body {
   transition: background 0.15s, opacity 0.15s;
 }
 
-.submit-btn:hover:not(:disabled) { background: var(--ink-2); }
+.submit-btn:hover:not(:disabled) { background: #524030; }
 
 .submit-btn:disabled {
   opacity: 0.4;
