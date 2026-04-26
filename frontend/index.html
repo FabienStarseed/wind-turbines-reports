@@ -14,7 +14,12 @@
 <header class="app-header">
   <div class="header-inner">
     <div class="brand">
-      <div class="brand-icon">⚙</div>
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+        <path d="M12 9.5 L10 3 L12 2 L14 3 Z" fill="currentColor" opacity="0.85"/>
+        <path d="M12 14.5 L5.5 19 L4.5 17 L6 14 Z" fill="currentColor" opacity="0.85"/>
+        <path d="M12 14.5 L18.5 19 L19.5 17 L18 14 Z" fill="currentColor" opacity="0.85"/>
+      </svg>
       <div class="brand-text">
         <span class="brand-name">BDDA</span>
         <span class="brand-sub">Blade Defect Detection Agent</span>
@@ -33,30 +38,32 @@
 
   <!-- LEFT PANEL: Form -->
   <div class="panel left-panel">
-    <div class="panel-title">New Inspection Report</div>
+    <div class="panel-header">
+      <h1 class="panel-title">New Inspection Report</h1>
+    </div>
 
     <form id="uploadForm" enctype="multipart/form-data">
 
       <!-- ── Turbine Identity ── -->
       <div class="form-section">
         <div class="form-section-label">Turbine Identity</div>
-        <div class="form-grid">
-          <div class="field">
-            <label>Turbine ID <span class="req">*</span></label>
-            <input type="text" name="turbine_id" placeholder="JAP19" required>
+        <div class="form-grid form-grid-2">
+          <div class="field field-hero">
+            <label for="f-turbine-id">Turbine ID <span class="req" aria-label="required">*</span></label>
+            <input type="text" id="f-turbine-id" name="turbine_id" placeholder="JAP19" required autocomplete="off">
           </div>
           <div class="field">
-            <label>Turbine Model <span class="req">*</span></label>
-            <input type="text" name="turbine_model" placeholder="Vestas V90-2.0 MW" required>
+            <label for="f-turbine-model">Turbine Model <span class="req" aria-label="required">*</span></label>
+            <input type="text" id="f-turbine-model" name="turbine_model" placeholder="Vestas V90-2.0 MW" required>
           </div>
           <div class="field">
-            <label>Site Name <span class="req">*</span></label>
-            <input type="text" name="site_name" placeholder="Tomamae Wind Farm" required>
+            <label for="f-site-name">Site Name <span class="req" aria-label="required">*</span></label>
+            <input type="text" id="f-site-name" name="site_name" placeholder="Tomamae Wind Farm" required>
           </div>
           <div class="field">
-            <label>Country <span class="req">*</span></label>
-            <select name="country" required>
-              <option value="">Select…</option>
+            <label for="f-country">Country <span class="req" aria-label="required">*</span></label>
+            <select id="f-country" name="country" required>
+              <option value="">Select country…</option>
               <option value="Japan">Japan</option>
               <option value="Philippines">Philippines</option>
               <option value="Taiwan">Taiwan</option>
@@ -64,28 +71,28 @@
             </select>
           </div>
         </div>
-        <div class="form-grid form-grid-3">
+        <div class="form-grid form-grid-3 form-optional-group">
           <div class="field">
-            <label>Hub Height (m)</label>
-            <input type="number" name="hub_height_m" placeholder="80">
+            <label for="f-hub">Hub Height (m)</label>
+            <input type="number" id="f-hub" name="hub_height_m" placeholder="80">
           </div>
           <div class="field">
-            <label>Rotor Diameter (m)</label>
-            <input type="number" name="rotor_diameter_m" placeholder="90">
+            <label for="f-rotor">Rotor Diameter (m)</label>
+            <input type="number" id="f-rotor" name="rotor_diameter_m" placeholder="90">
           </div>
           <div class="field">
-            <label>Blade Length (m)</label>
-            <input type="number" name="blade_length_m" placeholder="44">
+            <label for="f-blade">Blade Length (m)</label>
+            <input type="number" id="f-blade" name="blade_length_m" placeholder="44">
           </div>
         </div>
-        <div class="form-grid form-grid-2">
+        <div class="form-grid form-grid-2 form-optional-group">
           <div class="field">
-            <label>GPS Latitude</label>
-            <input type="text" name="gps_lat" placeholder="44.3123">
+            <label for="f-lat">GPS Latitude</label>
+            <input type="text" id="f-lat" name="gps_lat" placeholder="44.3123">
           </div>
           <div class="field">
-            <label>GPS Longitude</label>
-            <input type="text" name="gps_lon" placeholder="141.6789">
+            <label for="f-lon">GPS Longitude</label>
+            <input type="text" id="f-lon" name="gps_lon" placeholder="141.6789">
           </div>
         </div>
       </div>
@@ -93,68 +100,83 @@
       <!-- ── Inspection Details ── -->
       <div class="form-section">
         <div class="form-section-label">Inspection Details</div>
-        <div class="form-grid">
+        <div class="form-grid form-grid-3">
           <div class="field">
-            <label>Inspector Name <span class="req">*</span></label>
-            <input type="text" name="inspector_name" placeholder="Your name" required>
+            <label for="f-inspector">Inspector Name <span class="req" aria-label="required">*</span></label>
+            <input type="text" id="f-inspector" name="inspector_name" placeholder="Your name" required>
           </div>
           <div class="field">
-            <label>Inspection Date <span class="req">*</span></label>
-            <input type="date" name="inspection_date" required>
+            <label for="f-date">Inspection Date <span class="req" aria-label="required">*</span></label>
+            <input type="date" id="f-date" name="inspection_date" required>
           </div>
           <div class="field">
-            <label>Drone Model</label>
-            <input type="text" name="drone_model" placeholder="DJI Matrice 300 RTK" value="DJI Matrice 300 RTK">
+            <label for="f-drone">Drone Model</label>
+            <input type="text" id="f-drone" name="drone_model" placeholder="DJI Matrice 300 RTK" value="DJI Matrice 300 RTK">
           </div>
         </div>
       </div>
 
       <!-- ── Environmental Conditions ── -->
-      <div class="form-section">
-        <div class="form-section-label">Environmental Conditions</div>
+      <div class="form-section form-section-optional">
+        <div class="form-section-label">
+          Environmental Conditions
+          <span class="optional-tag">optional</span>
+        </div>
         <div class="form-grid form-grid-4">
           <div class="field">
-            <label>Weather</label>
-            <input type="text" name="weather" placeholder="Clear, sunny">
+            <label for="f-weather">Weather</label>
+            <input type="text" id="f-weather" name="weather" placeholder="Clear, sunny">
           </div>
           <div class="field">
-            <label>Wind Speed (m/s)</label>
-            <input type="number" step="0.1" name="wind_speed_ms" placeholder="4.2">
+            <label for="f-wind">Wind Speed (m/s)</label>
+            <input type="number" step="0.1" id="f-wind" name="wind_speed_ms" placeholder="4.2">
           </div>
           <div class="field">
-            <label>Temperature (°C)</label>
-            <input type="number" name="temperature_c" placeholder="22">
+            <label for="f-temp">Temperature (°C)</label>
+            <input type="number" id="f-temp" name="temperature_c" placeholder="22">
           </div>
           <div class="field">
-            <label>Visibility (km)</label>
-            <input type="number" name="visibility_km" placeholder="20">
+            <label for="f-vis">Visibility (km)</label>
+            <input type="number" id="f-vis" name="visibility_km" placeholder="20">
           </div>
         </div>
       </div>
 
       <!-- ── Notes ── -->
-      <div class="form-section">
-        <div class="form-section-label">Inspection Notes</div>
+      <div class="form-section form-section-optional">
+        <div class="form-section-label">
+          Inspection Notes
+          <span class="optional-tag">optional</span>
+        </div>
         <div class="field">
-          <textarea name="notes" rows="3" placeholder="Any limitations, blade access issues, weather notes…"></textarea>
+          <textarea name="notes" rows="3" placeholder="Limitations, blade access issues, weather notes…"></textarea>
         </div>
       </div>
 
       <!-- ── Image Upload ── -->
       <div class="form-section">
-        <div class="form-section-label">Upload Images <span class="req">*</span></div>
+        <div class="form-section-label">Upload Images <span class="req" aria-label="required">*</span></div>
         <div class="drop-zone" id="dropZone">
-          <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required>
-          <div class="drop-icon">📁</div>
-          <div class="drop-text">Drag &amp; drop your DJI mission folder ZIP</div>
-          <div class="drop-sub">or click to select files — ZIP preferred for full folder structure</div>
-          <div class="drop-hint">Supported: ZIP (DJI mission folder) · JPG/PNG (individual images)</div>
+          <input type="file" name="images" id="fileInput" accept=".zip,.jpg,.jpeg,.png" required aria-label="Select images or ZIP file">
+          <div class="drop-zone-content">
+            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="8" y="18" width="32" height="22" rx="3" stroke="currentColor" stroke-width="2" fill="none"/>
+              <path d="M24 14 L24 30" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M18 20 L24 14 L30 20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="16" y="8" width="16" height="8" rx="2" fill="currentColor" opacity="0.15"/>
+            </svg>
+            <div class="drop-text">Drag &amp; drop your DJI mission folder ZIP</div>
+            <div class="drop-sub">or click to browse — ZIP preferred for full folder structure</div>
+            <div class="drop-hint">Accepted: .zip (DJI mission folder) &nbsp;·&nbsp; .jpg / .png (individual images)</div>
+          </div>
         </div>
         <div class="file-preview" id="filePreview" style="display:none;"></div>
       </div>
 
       <button type="submit" class="submit-btn" id="submitBtn">
-        <span class="btn-icon">▶</span>
+        <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+        </svg>
         Generate Inspection Report
       </button>
 
@@ -166,11 +188,15 @@
 
     <!-- Active Job -->
     <div class="panel-section" id="jobPanel" style="display:none;">
-      <div class="panel-title">Analysis Progress</div>
+      <div class="panel-header">
+        <h2 class="panel-title">Analysis Progress</h2>
+      </div>
       <div class="job-card" id="jobCard">
         <div class="job-header">
-          <span class="job-turbine" id="jobTurbineId">—</span>
-          <span class="job-id" id="jobId">—</span>
+          <div class="job-header-main">
+            <span class="job-turbine" id="jobTurbineId">—</span>
+            <span class="job-id" id="jobId">—</span>
+          </div>
         </div>
         <div class="progress-stages" id="progressStages">
           <div class="stage-item" data-stage="ingesting">
@@ -198,14 +224,17 @@
             <div class="stage-label">Complete</div>
           </div>
         </div>
-        <div class="progress-bar-wrap">
+        <div class="progress-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100">
           <div class="progress-bar" id="progressBar" style="width:0%"></div>
         </div>
         <div class="job-message" id="jobMessage">Queued…</div>
         <div class="job-stats" id="jobStats"></div>
 
         <a class="download-btn" id="downloadBtn" style="display:none;" href="#">
-          ⬇ Download Report PDF
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+          </svg>
+          Download Report PDF
         </a>
         <div class="error-block" id="errorBlock" style="display:none;"></div>
       </div>
@@ -213,7 +242,9 @@
 
     <!-- Pipeline info -->
     <div class="panel-section">
-      <div class="panel-title">AI Pipeline</div>
+      <div class="panel-header">
+        <h2 class="panel-title">AI Pipeline</h2>
+      </div>
       <div class="pipeline-info">
         <div class="pipeline-step">
           <div class="pipeline-step-badge step-1">1</div>
@@ -252,7 +283,9 @@
 
     <!-- Recent jobs -->
     <div class="panel-section">
-      <div class="panel-title">Recent Reports</div>
+      <div class="panel-header">
+        <h2 class="panel-title">Recent Reports</h2>
+      </div>
       <div id="jobHistory" class="job-history">
         <div class="history-empty">No reports generated yet.</div>
       </div>
