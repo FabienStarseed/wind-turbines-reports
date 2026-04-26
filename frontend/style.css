@@ -53,8 +53,13 @@
   --r-lg: 10px;
 }
 
-html, body {
+html {
   min-height: 100%;
+  background: #DEDBD4;
+}
+
+body {
+  min-height: 100vh;
   background: #DEDBD4;   /* soft warm gray — page canvas */
   color: var(--ink);
   font-family: var(--display);
