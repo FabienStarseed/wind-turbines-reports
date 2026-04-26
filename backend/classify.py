@@ -1,5 +1,5 @@
 """
-classify.py — Stage 2: Defect classification using Gemini 2.0 Flash
+classify.py — Stage 2: Defect classification using Qwen3-VL-235B via DashScope
 Takes flagged images from triage, returns structured defect JSON per image.
 
 IEC 61400 / DNVGL-ST-0376 dual scoring (IEC Cat 0-4 + BDDA 0-10).
@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
-import google.generativeai as genai
+from openai import OpenAI
 from taxonomy import build_taxonomy_prompt_block, DEFECTS, get_urgency_for_category
 
 # ─── CLASSIFICATION PROMPT ────────────────────────────────────────────────────
@@ -63,29 +63,31 @@ If no defects found: {{"defects": [], "image_quality": "good", "image_notes": ""
 
 # ─── SCORING UTILITIES ────────────────────────────────────────────────────────
 
-# Gemini 2.0 Flash pricing (per million tokens)
-_INPUT_COST_PER_TOKEN  = 0.10 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000
+# Qwen3-VL-235B pricing (per million tokens)
+_INPUT_COST_PER_TOKEN  = 0.20 / 1_000_000
+_OUTPUT_COST_PER_TOKEN = 0.88 / 1_000_000
 
 # IEC Cat 0-4 → BDDA 0-10 midpoint mapping
 _IEC_TO_BDDA = {0: 0, 1: 1, 2: 3, 3: 6, 4: 9}
 
-_MODEL = "gemini-2.5-pro"  # Primary: Qwen3-VL planned — pending API availability. Fallback: gemini-2.5-pro
+_MODEL = "qwen3-vl-235b-a22b-instruct"
 
 
 def iec_to_bdda(iec_cat: int) -> int:
     return _IEC_TO_BDDA.get(iec_cat, 0)
 
 
-def load_and_resize_image(image_path: Path, max_edge: int = 1568):
-    """Load image, resize if needed, return PIL Image."""
+def load_and_encode_image(image_path: Path, max_edge: int = 1568) -> str:
+    """Load image, resize if needed, return base64-encoded JPEG string."""
     from PIL import Image
     with Image.open(image_path) as img:
         if img.mode != "RGB":
             img = img.convert("RGB")
         if max(img.size) > max_edge:
             img.thumbnail((max_edge, max_edge), Image.LANCZOS)
-        return img.copy()
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return base64.b64encode(buf.getvalue()).decode()
 
 
 # ─── DATA STRUCTURES ──────────────────────────────────────────────────────────
@@ -134,23 +136,23 @@ class ClassifyResult:
         return any(d.iec_category >= 3 for d in self.defects)
 
 
-# ─── GEMINI API CLIENT ────────────────────────────────────────────────────────
+# ─── QWEN API CLIENT ──────────────────────────────────────────────────────────
 
-def call_gemini_classify(
+def call_qwen_classify(
     image_path: Path,
     image_info: Dict,
     turbine_model: str,
     api_key: str,
     max_retries: int = 3,
 ) -> Dict:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(
-        model_name=_MODEL,
-        system_instruction=CLASSIFY_SYSTEM_PROMPT,
+    """Call Qwen3-VL-235B via DashScope OpenAI-compatible API for defect classification."""
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
     )
 
     taxonomy_block = build_taxonomy_prompt_block()
-    pil_img = load_and_resize_image(image_path)
+    b64_string = load_and_encode_image(image_path)
 
     user_prompt = CLASSIFY_USER_PROMPT.format(
         turbine_id=image_info["turbine_id"],
@@ -164,16 +166,32 @@ def call_gemini_classify(
         taxonomy_block=taxonomy_block,
     )
 
+    messages = [
+        {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64_string}"},
+                },
+                {
+                    "type": "text",
+                    "text": user_prompt,
+                },
+            ],
+        },
+    ]
+
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(
-                [pil_img, user_prompt],
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=2000,
-                    temperature=0.1,
-                ),
+            response = client.chat.completions.create(
+                model=_MODEL,
+                messages=messages,
+                max_tokens=2000,
+                temperature=0.1,
             )
-            raw = response.text.strip()
+            raw = response.choices[0].message.content.strip()
 
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
@@ -182,9 +200,8 @@ def call_gemini_classify(
             raw = raw.strip()
 
             result = json.loads(raw)
-            usage = response.usage_metadata
-            result["input_tokens"] = usage.prompt_token_count or 0
-            result["output_tokens"] = usage.candidates_token_count or 0
+            result["input_tokens"] = response.usage.prompt_tokens or 0
+            result["output_tokens"] = response.usage.completion_tokens or 0
             return result
 
         except json.JSONDecodeError:
@@ -212,7 +229,7 @@ def classify_image(
     min_confidence: float = 0.3,
 ) -> ClassifyResult:
     path = Path(image_info["path"])
-    raw = call_gemini_classify(path, image_info, turbine_model, api_key)
+    raw = call_qwen_classify(path, image_info, turbine_model, api_key)
 
     cost_usd = (
         raw.get("input_tokens", 0) * _INPUT_COST_PER_TOKEN
@@ -384,6 +401,6 @@ def load_critical_findings(classify_json_path: Path, min_category: int = 4) -> L
 
 
 if __name__ == "__main__":
-    print("classify.py — Stage 2 Gemini 2.0 Flash classification module")
-    key = os.environ.get("GOOGLE_API_KEY")
-    print("GOOGLE_API_KEY found" if key else "GOOGLE_API_KEY not set")
+    print("classify.py — Stage 2 Qwen3-VL-235B classification module")
+    key = os.environ.get("DASHSCOPE_API_KEY")
+    print("DASHSCOPE_API_KEY found" if key else "DASHSCOPE_API_KEY not set")

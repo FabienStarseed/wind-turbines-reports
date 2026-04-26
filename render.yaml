@@ -20,8 +20,8 @@ services:
       mountPath: /data
       sizeGB: 1
     envVars:
-      - key: GOOGLE_API_KEY
-        sync: false
+      - key: DASHSCOPE_API_KEY
+        sync: false          # Alibaba DashScope — Qwen3-VL-235B classify (Stage 2)
       - key: COST_LIMIT_USD
         sync: false
       - key: SECRET_KEY

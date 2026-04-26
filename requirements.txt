@@ -7,7 +7,8 @@ uvicorn[standard]==0.32.1
 python-multipart==0.0.12
 
 # ─── AI APIs ──────────────────────────────────────────────────────────────────
-anthropic>=0.40.0
+anthropic>=0.40.0            # Stage 1 (triage) + Stage 3 (Claude Opus 4.7 deep analysis)
+openai>=1.30.0               # Stage 2 (Qwen3-VL via DashScope OpenAI-compatible API)
 
 # ─── Image processing ─────────────────────────────────────────────────────────
 Pillow>=10.0.0

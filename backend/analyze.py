@@ -1,11 +1,12 @@
 """
-analyze.py — Stage 3: Deep analysis of Cat 4+ defects using Gemini 2.0 Flash
+analyze.py — Stage 3: Deep analysis of Cat 4+ defects using Claude Opus 4.7
 Provides root cause, failure risk, Vestas SMP recommendation, and cost estimate.
 
 Only runs on Cat 4+ defects — ~10-20 findings per turbine.
 """
 
 import os
+import io
 import json
 import time
 import base64
@@ -13,13 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
-import google.generativeai as genai
-
-# ─── MODEL NOTE ───────────────────────────────────────────────────────────────
-# TARGET: Claude claude-opus-4-5 (Anthropic) for deep analysis — best reasoning
-# CURRENT: gemini-2.5-pro (interim — Anthropic SDK migration pending)
-# FALLBACK: deepseek-v3 via OpenAI-compatible API
-# ──────────────────────────────────────────────────────────────────────────────
+import anthropic
 
 # ─── ANALYSIS PROMPT ─────────────────────────────────────────────────────────
 
@@ -110,16 +105,29 @@ class DeepAnalysis:
     error: Optional[str] = None
 
 
-# ─── GEMINI API CLIENT ────────────────────────────────────────────────────────
+# ─── CLAUDE API CLIENT ────────────────────────────────────────────────────────
 
-# Gemini 2.0 Flash pricing (per million tokens)
-_INPUT_COST_PER_TOKEN  = 0.10 / 1_000_000
-_OUTPUT_COST_PER_TOKEN = 0.40 / 1_000_000
+# Claude Opus 4.7 pricing (per million tokens)
+_INPUT_COST_PER_TOKEN  = 5.00 / 1_000_000
+_OUTPUT_COST_PER_TOKEN = 25.00 / 1_000_000
 
-_MODEL = "gemini-2.5-pro"
+_MODEL = "claude-opus-4-7"
 
 
-def call_gemini_analyze(
+def load_and_encode_image(image_path: Path, max_edge: int = 1568) -> str:
+    """Load an image, resize to max_edge on longest side, return base64 JPEG."""
+    from PIL import Image
+    with Image.open(image_path) as img:
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        if max(img.size) > max_edge:
+            img.thumbnail((max_edge, max_edge), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return base64.b64encode(buf.getvalue()).decode()
+
+
+def call_claude_analyze(
     defect: Dict,
     turbine_model: str,
     api_key: str,
@@ -127,11 +135,7 @@ def call_gemini_analyze(
     max_retries: int = 3,
     location_type: str = "onshore",
 ) -> Dict:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(
-        model_name=_MODEL,
-        system_instruction=ANALYZE_SYSTEM_PROMPT,
-    )
+    client = anthropic.Anthropic(api_key=api_key)
 
     offshore_note = (
         "IMPORTANT: This is an OFFSHORE turbine. Repair access is significantly more expensive and difficult. "
@@ -161,27 +165,29 @@ def call_gemini_analyze(
         img_path = Path(defect["image_path"])
         if img_path.exists():
             try:
-                from PIL import Image as PILImage
-                with PILImage.open(img_path) as img:
-                    if img.mode != "RGB":
-                        img = img.convert("RGB")
-                    img.thumbnail((1568, 1568), PILImage.LANCZOS)
-                    content.append(img.copy())
+                b64 = load_and_encode_image(img_path)
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": b64,
+                    },
+                })
             except Exception:
                 pass
 
-    content.append(prompt)
+    content.append({"type": "text", "text": prompt})
 
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(
-                content,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=1500,
-                    temperature=0.1,
-                ),
+            response = client.messages.create(
+                model=_MODEL,
+                max_tokens=1500,
+                system=ANALYZE_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": content}],
             )
-            raw = response.text.strip()
+            raw = response.content[0].text.strip()
 
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
@@ -190,23 +196,21 @@ def call_gemini_analyze(
             raw = raw.strip()
 
             parsed = json.loads(raw)
-            usage = response.usage_metadata
-            parsed["input_tokens"] = usage.prompt_token_count or 0
-            parsed["output_tokens"] = usage.candidates_token_count or 0
+            parsed["input_tokens"] = response.usage.input_tokens
+            parsed["output_tokens"] = response.usage.output_tokens
             return parsed
 
         except json.JSONDecodeError as e:
             if attempt == max_retries - 1:
                 return {"error": f"JSON parse: {e}"}
             time.sleep(1)
-        except Exception as e:
-            err_str = str(e).lower()
-            if "quota" in err_str or "rate" in err_str or "429" in err_str:
-                sleep_time = (2 ** attempt) * 10
-                if attempt == max_retries - 1:
-                    return {"error": "rate_limit"}
-                time.sleep(sleep_time)
-            elif "500" in err_str or "503" in err_str:
+        except anthropic.RateLimitError:
+            sleep_time = (2 ** attempt) * 10
+            if attempt == max_retries - 1:
+                return {"error": "rate_limit"}
+            time.sleep(sleep_time)
+        except anthropic.APIStatusError as e:
+            if e.status_code in (500, 503):
                 if attempt == max_retries - 1:
                     return {"error": f"server_error: {e}"}
                 time.sleep(2 ** attempt)
@@ -214,6 +218,10 @@ def call_gemini_analyze(
                 if attempt == max_retries - 1:
                     return {"error": str(e)}
                 time.sleep(2 ** attempt)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                return {"error": str(e)}
+            time.sleep(2 ** attempt)
 
     return {"error": "Max retries exceeded"}
 
@@ -226,7 +234,7 @@ def analyze_defect(
     api_key: str,
     include_image: bool = True,
 ) -> DeepAnalysis:
-    raw = call_gemini_analyze(
+    raw = call_claude_analyze(
         defect, turbine_model, api_key, include_image,
         location_type=defect.get("location_type", "onshore"),
     )
@@ -359,6 +367,6 @@ def save_analysis_results(results: List[DeepAnalysis], output_path: Path):
 
 
 if __name__ == "__main__":
-    print("analyze.py — Stage 3 Gemini 2.0 Flash deep analysis module")
-    key = os.environ.get("GOOGLE_API_KEY")
-    print("GOOGLE_API_KEY found" if key else "GOOGLE_API_KEY not set")
+    print("analyze.py — Stage 3 Claude Opus 4.7 deep analysis module")
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    print("ANTHROPIC_API_KEY found" if key else "ANTHROPIC_API_KEY not set")

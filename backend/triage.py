@@ -101,11 +101,11 @@ def call_claude_triage(
     inspection_date: str,
     location_type: str,  # "onshore" or "offshore"
     api_key: str,
-    model: str = "claude-opus-4-5",
+    model: str = "claude-opus-4-7",
     max_retries: int = 3,
 ) -> Dict:
     """
-    Call Claude Opus 4.6 with image tiles for triage.
+    Call Claude Opus 4.7 with image tiles for triage.
     Returns parsed JSON response dict or error dict.
 
     CRITICAL: image_b64_list must contain raw base64 strings with NO data URI prefix
