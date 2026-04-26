@@ -657,30 +657,14 @@ async def health():
 
 # ─── STATIC FILES ────────────────────────────────────────────────────────────
 
-# Mount static assets (css, js) without html=True so explicit routes take priority
-if FRONTEND_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
-
-
-@app.get("/style.css", include_in_schema=False)
-async def style():
-    return FileResponse(str(FRONTEND_DIR / "style.css"))
-
-
-@app.get("/app.js", include_in_schema=False)
-async def appjs():
-    return FileResponse(str(FRONTEND_DIR / "app.js"))
-
-
 @app.get("/login", include_in_schema=False)
 async def login_redirect():
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/", status_code=302)
 
 
-@app.get("/", include_in_schema=False)
-async def index_page():
-    return FileResponse(str(FRONTEND_DIR / "index.html"), headers={"Cache-Control": "no-store"})
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
