@@ -55,7 +55,7 @@
 
 html, body {
   min-height: 100%;
-  background: #1C1A16;   /* deep warm dark — page canvas */
+  background: #DEDBD4;   /* soft warm gray — page canvas */
   color: var(--ink);
   font-family: var(--display);
   font-size: 14px;
