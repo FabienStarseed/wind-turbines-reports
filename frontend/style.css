@@ -161,6 +161,12 @@ body {
   background: #F7F4EE;   /* warm parchment — form card */
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.col-form form {
+  display: flex;
+  flex-direction: column;
 }
 
 .col-status {
@@ -172,7 +178,7 @@ body {
 /* ─── COLUMN HEADER ──────────────────────────────────────────────────────── */
 .col-header {
   padding: var(--s5) var(--s5) var(--s4);
-  border-bottom: 1px solid var(--line);
+  border-bottom: none;
   background: #EDE8DE;   /* warm linen header */
   border-radius: var(--r-lg) var(--r-lg) 0 0;
 }
@@ -198,19 +204,19 @@ body {
 .fs {
   padding: var(--s5) var(--s5) var(--s4);
   border: 0;
-  border-bottom: 2px solid var(--line-soft);
+  border-bottom: none;
 }
 
 .fs:last-of-type { border-bottom: 0; }
 
 .fs-optional { background: var(--bg-2); }
 
-/* Warm section accents */
-.fs-coffee { background: var(--warm-coffee); border-left: 3px solid var(--warm-coffee-line); border-bottom-color: var(--warm-coffee-line); }
-.fs-navy   { background: var(--warm-navy);   border-left: 3px solid var(--warm-navy-line);   border-bottom-color: var(--warm-navy-line); }
-.fs-sand   { background: var(--warm-sand);   border-left: 3px solid var(--warm-sand-line);   border-bottom-color: var(--warm-sand-line); }
-.fs-taupe  { background: var(--warm-taupe);  border-left: 3px solid var(--warm-taupe-line);  border-bottom-color: var(--warm-taupe-line); }
-.fs-amber  { background: var(--warm-amber);  border-left: 3px solid var(--warm-amber-line);  border-bottom-color: var(--warm-amber-line); }
+/* Warm section accents — left bar only, no horizontal lines */
+.fs-coffee { background: var(--warm-coffee); border-left: 4px solid var(--warm-coffee-line); }
+.fs-navy   { background: var(--warm-navy);   border-left: 4px solid var(--warm-navy-line); }
+.fs-sand   { background: var(--warm-sand);   border-left: 4px solid var(--warm-sand-line); }
+.fs-taupe  { background: var(--warm-taupe);  border-left: 4px solid var(--warm-taupe-line); }
+.fs-amber  { background: var(--warm-amber);  border-left: 4px solid var(--warm-amber-line); }
 
 /* Override legend color for warm sections */
 .fs-coffee .fs-legend { color: #8B6914; }
