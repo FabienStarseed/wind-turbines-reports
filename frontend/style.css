@@ -27,17 +27,17 @@
   --moss:        #3F5A3C;
   --rust:        #B85431;
 
-  /* Pastels — section accents */
-  --pastel-sage:      #E8F0E5;   /* asset identity — soft green */
-  --pastel-sage-line: #C8DAC3;
-  --pastel-sky:       #E5EEF7;   /* inspection details — soft blue */
-  --pastel-sky-line:  #C3D5E8;
-  --pastel-sand:      #F5F0E5;   /* environmental — warm sand */
-  --pastel-sand-line: #E0D5BE;
-  --pastel-mist:      #EDE8F0;   /* notes — soft lavender */
-  --pastel-mist-line: #D5CCE0;
-  --pastel-amber:     #FEF8E5;   /* upload — warm amber tint */
-  --pastel-amber-line:#E8D89A;
+  /* Warm section accents */
+  --warm-coffee:      #F5F0E8;
+  --warm-coffee-line: #8B6914;
+  --warm-navy:        #E8EDF5;
+  --warm-navy-line:   #1E3A5F;
+  --warm-sand:        #F0EBE0;
+  --warm-sand-line:   #7A6030;
+  --warm-taupe:       #EDEBE6;
+  --warm-taupe-line:  #5A5040;
+  --warm-amber:       #FFF3DC;
+  --warm-amber-line:  #C99A12;
 
   /* Type */
   --display: 'Geist', 'Inter', system-ui, sans-serif;
@@ -198,19 +198,19 @@ html, body {
 
 .fs-optional { background: var(--bg-2); }
 
-/* Pastel section accents */
-.fs-sage  { background: var(--pastel-sage);  border-left: 3px solid var(--pastel-sage-line); }
-.fs-sky   { background: var(--pastel-sky);   border-left: 3px solid var(--pastel-sky-line); }
-.fs-sand  { background: var(--pastel-sand);  border-left: 3px solid var(--pastel-sand-line); }
-.fs-mist  { background: var(--pastel-mist);  border-left: 3px solid var(--pastel-mist-line); }
-.fs-amber { background: var(--pastel-amber); border-left: 3px solid var(--pastel-amber-line); }
+/* Warm section accents */
+.fs-coffee { background: var(--warm-coffee); border-left: 3px solid var(--warm-coffee-line); }
+.fs-navy   { background: var(--warm-navy);   border-left: 3px solid var(--warm-navy-line); }
+.fs-sand   { background: var(--warm-sand);   border-left: 3px solid var(--warm-sand-line); }
+.fs-taupe  { background: var(--warm-taupe);  border-left: 3px solid var(--warm-taupe-line); }
+.fs-amber  { background: var(--warm-amber);  border-left: 3px solid var(--warm-amber-line); }
 
-/* Override legend color for pastel sections */
-.fs-sage  .fs-legend { color: #4A6B44; }
-.fs-sky   .fs-legend { color: #3A5E82; }
-.fs-sand  .fs-legend { color: #7A6030; }
-.fs-mist  .fs-legend { color: #5A4870; }
-.fs-amber .fs-legend { color: var(--signal-deep); }
+/* Override legend color for warm sections */
+.fs-coffee .fs-legend { color: #8B6914; }
+.fs-navy   .fs-legend { color: #1E3A5F; }
+.fs-sand   .fs-legend { color: #7A6030; }
+.fs-taupe  .fs-legend { color: #5A5040; }
+.fs-amber  .fs-legend { color: var(--signal-deep); }
 
 .fs-legend {
   display: flex;
@@ -439,36 +439,53 @@ html, body {
   overflow: hidden;
 }
 
-/* Pastel status section variants */
-.status-amber {
-  background: var(--pastel-amber);
-  border-color: var(--pastel-amber-line);
+/* Dark status section variants */
+.status-navy-dark {
+  background: #1E3A5F;
+  border-color: #16304F;
 }
-.status-amber .section-header {
-  background: var(--pastel-amber);
-  border-bottom-color: var(--pastel-amber-line);
+.status-navy-dark .section-header {
+  background: #1E3A5F;
+  border-bottom-color: rgba(255,255,255,0.12);
 }
-.status-amber .kicker { color: var(--signal-deep); }
+.status-navy-dark .kicker { color: #7BAFD4; }
+.status-navy-dark .section-title { color: #FFFFFF; }
+.status-navy-dark .pipe-num { color: rgba(255,255,255,0.45); }
+.status-navy-dark .pipe-name { color: #FFFFFF; }
+.status-navy-dark .pipe-desc { color: rgba(255,255,255,0.6); }
 
-.status-sage {
-  background: var(--pastel-sage);
-  border-color: var(--pastel-sage-line);
+.status-coffee-dark {
+  background: #2A2218;
+  border-color: #1E190F;
 }
-.status-sage .section-header {
-  background: var(--pastel-sage);
-  border-bottom-color: var(--pastel-sage-line);
+.status-coffee-dark .section-header {
+  background: #2A2218;
+  border-bottom-color: rgba(255,255,255,0.10);
 }
-.status-sage .kicker { color: #4A6B44; }
+.status-coffee-dark .kicker { color: #C99A12; }
+.status-coffee-dark .section-title { color: #FAFAF7; }
+.status-coffee-dark .pipe-num { color: rgba(255,255,255,0.4); }
+.status-coffee-dark .pipe-name { color: #FAFAF7; }
+.status-coffee-dark .pipe-desc { color: rgba(255,255,255,0.55); }
 
-.status-sky {
-  background: var(--pastel-sky);
-  border-color: var(--pastel-sky-line);
+.status-slate-dark {
+  background: #1A2535;
+  border-color: #131C2A;
 }
-.status-sky .section-header {
-  background: var(--pastel-sky);
-  border-bottom-color: var(--pastel-sky-line);
+.status-slate-dark .section-header {
+  background: #1A2535;
+  border-bottom-color: rgba(255,255,255,0.10);
 }
-.status-sky .kicker { color: #3A5E82; }
+.status-slate-dark .kicker { color: #7BAFD4; }
+.status-slate-dark .section-title { color: #FFFFFF; }
+.status-slate-dark .history-empty { color: rgba(255,255,255,0.4); }
+.status-slate-dark .history-item {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.10);
+}
+.status-slate-dark .history-item:hover { border-color: rgba(255,255,255,0.22); }
+.status-slate-dark .history-turbine { color: #FFFFFF; }
+.status-slate-dark .history-date { color: rgba(255,255,255,0.5); }
 
 .section-header {
   padding: var(--s3) var(--s4) var(--s3);
@@ -648,10 +665,10 @@ html, body {
 .pipe-step:last-child { border-bottom: 0; }
 
 /* Per-step accent colors */
-.pipe-step:nth-child(1) { border-left: 3px solid #C8DAC3; background: rgba(232,240,229,0.4); }
-.pipe-step:nth-child(2) { border-left: 3px solid #C3D5E8; background: rgba(229,238,247,0.4); }
-.pipe-step:nth-child(3) { border-left: 3px solid var(--pastel-mist-line); background: rgba(237,232,240,0.4); }
-.pipe-step:nth-child(4) { border-left: 3px solid var(--pastel-sand-line); background: rgba(245,240,229,0.4); }
+.pipe-step:nth-child(1) { border-left: 3px solid #8B6914; background: rgba(139,105,20,0.12); }
+.pipe-step:nth-child(2) { border-left: 3px solid #1E3A5F; background: rgba(30,58,95,0.12); }
+.pipe-step:nth-child(3) { border-left: 3px solid #5A4070; background: rgba(90,64,112,0.12); }
+.pipe-step:nth-child(4) { border-left: 3px solid #7A6030; background: rgba(122,96,48,0.12); }
 
 .pipe-num {
   font-family: var(--mono);
